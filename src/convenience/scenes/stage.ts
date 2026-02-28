@@ -13,9 +13,10 @@ import { BaseScene } from "./base.ts";
  * Scene manager middleware. While a scene is active, only that scene's
  * handlers run — bot-level handlers registered after `bot.use(stage)` are
  * skipped. To add global commands (e.g. /cancel) that work inside scenes,
- * register them BEFORE the stage:
+ * register them BEFORE the stage using the instance helpers:
  *
- *   bot.command("cancel", Stage.leave());  // works inside scenes
+ *   const stage = new Stage([scene]);
+ *   bot.command("cancel", stage.leave());  // works inside scenes
  *   bot.use(stage);
  */
 export class Stage<C extends SceneContext> extends Composer<C> {
@@ -30,9 +31,7 @@ export class Stage<C extends SceneContext> extends Composer<C> {
     const scenes = this.#scenes;
 
     return async (ctx, next) => {
-      // Attach ctx.scene
-      const sceneCtrl = createSceneController(ctx, scenes);
-      (ctx as unknown as SceneContextFlavor).scene = sceneCtrl;
+      const sceneCtrl = getOrCreateSceneController(ctx, scenes);
 
       // If currently in a scene, route to that scene's handler
       const current = sceneCtrl.current;
@@ -51,20 +50,71 @@ export class Stage<C extends SceneContext> extends Composer<C> {
     };
   }
 
+  /** Middleware factory bound to this stage: enter a scene by ID. */
+  enter(sceneId: string): MiddlewareFn<C> {
+    return (ctx) => getOrCreateSceneController(ctx, this.#scenes).enter(sceneId);
+  }
+
+  /** Middleware factory bound to this stage: leave the current scene. */
+  leave(): MiddlewareFn<C> {
+    return (ctx) => getOrCreateSceneController(ctx, this.#scenes).leave();
+  }
+
+  /** Middleware factory bound to this stage: re-enter the current scene. */
+  reenter(): MiddlewareFn<C> {
+    return (ctx) => getOrCreateSceneController(ctx, this.#scenes).reenter();
+  }
+
   /** Middleware factory: enter a scene by ID. */
   static enter<C extends SceneContext>(sceneId: string): MiddlewareFn<C> {
-    return (ctx) => ctx.scene.enter(sceneId);
+    return (ctx) => {
+      const scene = ctx.scene;
+      if (!scene) {
+        throw new Error(
+          `[cygnet] ctx.scene is not attached. Use a Stage instance helper (stage.enter("${sceneId}")) or register bot.use(stage) before this middleware.`,
+        );
+      }
+      return scene.enter(sceneId);
+    };
   }
 
   /** Middleware factory: leave the current scene. */
   static leave<C extends SceneContext>(): MiddlewareFn<C> {
-    return (ctx) => ctx.scene.leave();
+    return (ctx) => {
+      const scene = ctx.scene;
+      if (!scene) {
+        throw new Error(
+          "[cygnet] ctx.scene is not attached. Use a Stage instance helper (stage.leave()) or register bot.use(stage) before this middleware.",
+        );
+      }
+      return scene.leave();
+    };
   }
 
   /** Middleware factory: re-enter the current scene. */
   static reenter<C extends SceneContext>(): MiddlewareFn<C> {
-    return (ctx) => ctx.scene.reenter();
+    return (ctx) => {
+      const scene = ctx.scene;
+      if (!scene) {
+        throw new Error(
+          "[cygnet] ctx.scene is not attached. Use a Stage instance helper (stage.reenter()) or register bot.use(stage) before this middleware.",
+        );
+      }
+      return scene.reenter();
+    };
   }
+}
+
+function getOrCreateSceneController<C extends SceneContext>(
+  ctx: C,
+  scenes: Map<string, BaseScene<C>>,
+): SceneController {
+  const flavored = ctx as unknown as SceneContextFlavor & { scene?: SceneController };
+  if (flavored.scene) return flavored.scene;
+
+  const sceneCtrl = createSceneController(ctx, scenes);
+  flavored.scene = sceneCtrl;
+  return sceneCtrl;
 }
 
 function createSceneController<C extends SceneContext>(

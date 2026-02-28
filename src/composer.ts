@@ -1,6 +1,7 @@
 import type { MaybePromise } from "./types.ts";
 import type { FilterQuery, Filter } from "./filter.ts";
 import type { Context } from "./context.ts";
+import { BotError } from "./core/error.ts";
 
 // --- Core middleware types ---
 
@@ -22,6 +23,10 @@ export type Trigger<C> =
   | string
   | RegExp
   | ((ctx: C) => MaybePromise<boolean>);
+
+/** Narrowed context after chatType() filter. */
+export type ChatTypeContext<C, T extends "group" | "private"> =
+  T extends "group" ? C & { isGroup: true } : C & { isGroup: false };
 
 // --- Internal helpers ---
 
@@ -66,6 +71,10 @@ function compose<C>(middlewares: Middleware<C>[]): MiddlewareFn<C> {
 export class Composer<C extends Context> implements MiddlewareObj<C> {
   #handler: MiddlewareFn<C>;
 
+  /** Error handler for background middleware (fork). Bot overrides to route through bot.catch(). */
+  protected _onForkError: (err: unknown, ctx: C) => void =
+    (err) => console.error("[cygnet] Error in forked middleware:", err);
+
   constructor(...middleware: Middleware<C>[]) {
     this.#handler = middleware.length > 0
       ? compose(middleware)
@@ -102,6 +111,21 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
   }
 
   /**
+   * Filter updates by chat type: "group" or "private".
+   * Works across all update types (messages, edits, typing, etc.).
+   */
+  chatType<T extends "group" | "private">(
+    type: T,
+    ...middleware: Middleware<ChatTypeContext<C, T>>[]
+  ): this {
+    return this.filter(
+      (ctx): ctx is ChatTypeContext<C, T> =>
+        type === "group" ? ctx.isGroup : !ctx.isGroup,
+      ...middleware,
+    );
+  }
+
+  /**
    * Match message text against string(s) or RegExp(s).
    * Sets ctx.match on RegExp matches.
    */
@@ -112,10 +136,13 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
     const triggers = Array.isArray(trigger) ? trigger : [trigger];
     return this.filter((ctx) => {
       const text = ctx.text;
-      if (text === undefined) return false;
+      if (!text) return false;
       for (const t of triggers) {
         if (typeof t === "string") {
-          if (text === t) return true;
+          if (text.includes(t)) {
+            (ctx as Record<string, unknown>).match = t;
+            return true;
+          }
         } else {
           const m = t.exec(text);
           if (m) {
@@ -141,11 +168,13 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
     return this.filter((ctx) => {
       const text = ctx.text;
       if (!text?.startsWith("/")) return false;
-      // "/cmd", "/cmd arg", "/cmd@botname"
-      const match = /^\/([a-z0-9_]+)(@\S+)?(?:\s|$)/i.exec(text);
+      // "/cmd", "/cmd arg", "/cmd@botname arg"
+      const match = /^\/([a-z0-9_]+)(@\S+)?(?:\s(.*))?$/i.exec(text);
       if (!match) return false;
       const cmd = (match[1] ?? "").toLowerCase();
-      return normalized.includes(cmd);
+      if (!normalized.includes(cmd)) return false;
+      (ctx as Record<string, unknown>).match = (match[3] ?? "").trim();
+      return true;
     }, ...middleware);
   }
 
@@ -168,9 +197,10 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
     const mw = compose(middleware);
     return this.use(async (ctx, next) => {
       if (await predicate(ctx)) {
-        await run(mw, ctx);
+        await mw(ctx, next);
+      } else {
+        await next();
       }
-      await next();
     });
   }
 
@@ -193,11 +223,10 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
   ): this {
     return this.use(async (ctx, next) => {
       if (await predicate(ctx)) {
-        await run(flatten(trueMiddleware), ctx);
+        await flatten(trueMiddleware)(ctx, next);
       } else {
-        await run(flatten(falseMiddleware), ctx);
+        await flatten(falseMiddleware)(ctx, next);
       }
-      await next();
     });
   }
 
@@ -208,7 +237,7 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
   fork(...middleware: Middleware<C>[]): this {
     const mw = compose(middleware);
     return this.use((ctx, next) => {
-      run(mw, ctx).catch(() => {}); // background
+      run(mw, ctx).catch((err) => this._onForkError(err, ctx));
       return next();
     });
   }
@@ -229,9 +258,11 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
 
   /**
    * Isolated error boundary: errors thrown inside are caught by `errorHandler`.
+   * The handler receives a BotError and `next`. Call `next()` to continue
+   * downstream; omit it to swallow the error and stop propagation.
    */
   errorBoundary(
-    errorHandler: (err: unknown, ctx: C) => MaybePromise<void>,
+    errorHandler: (err: BotError<C>, next: NextFunction) => MaybePromise<void>,
     ...middleware: Middleware<C>[]
   ): this {
     const mw = compose(middleware);
@@ -239,7 +270,8 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
       try {
         await run(mw, ctx);
       } catch (err) {
-        await errorHandler(err, ctx);
+        await errorHandler(new BotError<C>(err, ctx), next);
+        return;
       }
       await next();
     });

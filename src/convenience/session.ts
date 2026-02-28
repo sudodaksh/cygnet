@@ -1,3 +1,5 @@
+import { readFile, writeFile } from "fs/promises";
+
 import type { Context } from "../context.ts";
 import type { MaybePromise } from "../types.ts";
 import type { MiddlewareFn } from "../composer.ts";
@@ -8,6 +10,17 @@ export interface StorageAdapter<T> {
   read(key: string): MaybePromise<T | undefined>;
   write(key: string, value: T): MaybePromise<void>;
   delete(key: string): MaybePromise<void>;
+}
+
+/**
+ * Branded storage adapter for state that must not be wrapped or transformed.
+ * `enhanceStorage()` returns a plain StorageAdapter, so it is intentionally not
+ * assignable to this type.
+ */
+export const directStorageBrand: unique symbol = Symbol("cygnet.directStorage");
+
+export interface DirectStorageAdapter<T> extends StorageAdapter<T> {
+  readonly [directStorageBrand]: true;
 }
 
 // --- SessionFlavor ---
@@ -87,7 +100,8 @@ export function session<S, C extends Context = Context>(
 
 // --- MemoryStorage ---
 
-export class MemoryStorage<T> implements StorageAdapter<T> {
+export class MemoryStorage<T> implements DirectStorageAdapter<T> {
+  readonly [directStorageBrand] = true as const;
   readonly #store = new Map<string, T>();
 
   read(key: string): T | undefined {
@@ -106,6 +120,116 @@ export class MemoryStorage<T> implements StorageAdapter<T> {
   keys(): IterableIterator<string> {
     return this.#store.keys();
   }
+}
+
+/**
+ * JSON-file-backed storage adapter.
+ *
+ * Stores all keys in a single JSON object on disk. Simple and durable, but not
+ * intended for high write volume or concurrent writers.
+ */
+export class FileStorage<T> implements DirectStorageAdapter<T> {
+  readonly [directStorageBrand] = true as const;
+  readonly #path: string;
+
+  constructor(path: string) {
+    this.#path = path;
+  }
+
+  async read(key: string): Promise<T | undefined> {
+    const store = await this.#readStore();
+    return store[key];
+  }
+
+  async write(key: string, value: T): Promise<void> {
+    const store = await this.#readStore();
+    store[key] = value;
+    await this.#writeStore(store);
+  }
+
+  async delete(key: string): Promise<void> {
+    const store = await this.#readStore();
+    if (!(key in store)) return;
+    delete store[key];
+    await this.#writeStore(store);
+  }
+
+  async #readStore(): Promise<Record<string, T>> {
+    try {
+      const text = await readFile(this.#path, "utf8");
+      if (!text) return {};
+      const parsed = JSON.parse(text) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return {};
+      }
+      return parsed as Record<string, T>;
+    } catch (err) {
+      const code = typeof err === "object" && err !== null && "code" in err
+        ? String((err as { code?: unknown }).code)
+        : "";
+      if (code === "ENOENT") return {};
+      throw err;
+    }
+  }
+
+  async #writeStore(store: Record<string, T>): Promise<void> {
+    await writeFile(this.#path, JSON.stringify(store), "utf8");
+  }
+}
+
+// --- enhanceStorage ---
+
+/** Wrapper type for storage entries with TTL metadata. */
+export interface EnhancedEntry<T> {
+  value: T;
+  /** Unix ms expiry timestamp, or undefined for no expiry. */
+  expires?: number;
+}
+
+export interface EnhanceStorageOptions<T> {
+  /** The underlying storage adapter to wrap. */
+  storage: StorageAdapter<EnhancedEntry<T>>;
+  /** Time-to-live in milliseconds. Entries expire this many ms after their last write. */
+  ttl: number;
+}
+
+/**
+ * Wrap any StorageAdapter with TTL support. The underlying adapter stores
+ * `EnhancedEntry<T>` (value + expiry metadata). Expired entries are lazily
+ * evicted on read.
+ *
+ * @example
+ * bot.use(session({
+ *   storage: enhanceStorage({
+ *     storage: new MemoryStorage(),
+ *     ttl: 5 * 60 * 1000, // 5 minutes
+ *   }),
+ * }));
+ */
+export function enhanceStorage<T>(
+  options: EnhanceStorageOptions<T>,
+): StorageAdapter<T> {
+  const { storage, ttl: ttl } = options;
+  return {
+    async read(key) {
+      const entry = await storage.read(key);
+      if (!entry) return undefined;
+      if (entry.expires !== undefined && Date.now() > entry.expires) {
+        await storage.delete(key);
+        return undefined;
+      }
+      return entry.value;
+    },
+    async write(key, value) {
+      await storage.write(key, {
+        value,
+        expires: Date.now() + ttl,
+      });
+    },
+    async delete(key) {
+      await storage.delete(key);
+    },
+  };
 }
 
 // Re-export MiddlewareFn so callers can type-annotate session return value

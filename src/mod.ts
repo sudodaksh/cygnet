@@ -4,6 +4,7 @@ export type { BotConfig } from "./bot.ts";
 
 export { Composer, flatten, concat, run } from "./composer.ts";
 export type {
+  ChatTypeContext,
   Middleware,
   MiddlewareFn,
   MiddlewareObj,
@@ -12,6 +13,17 @@ export type {
 } from "./composer.ts";
 
 export { Context } from "./context.ts";
+export {
+  primeGroupStateCache,
+  restoreGroupStateCache,
+  snapshotGroupStateCache,
+} from "./context.ts";
+export type {
+  GroupStateSnapshot,
+  GroupStateSnapshotEntry,
+  GroupUpdateDetails,
+  GroupUpdateKind,
+} from "./context.ts";
 
 // Filters
 export { matchFilter } from "./filter.ts";
@@ -28,17 +40,17 @@ export type { ClientConfig } from "./core/client.ts";
 // Errors
 export { BotError, SignalError } from "./core/error.ts";
 
-// Service launcher
-export { startSignalService } from "./convenience/service.ts";
-export type { ServiceConfig, ServiceHandle } from "./convenience/service.ts";
-
 // Session
-export { session, MemoryStorage } from "./convenience/session.ts";
+export { session, MemoryStorage, FileStorage, enhanceStorage } from "./convenience/session.ts";
 export type {
+  DirectStorageAdapter,
+  EnhanceStorageOptions,
+  EnhancedEntry,
   SessionFlavor,
   SessionOptions,
   StorageAdapter,
 } from "./convenience/session.ts";
+export { directStorageBrand } from "./convenience/session.ts";
 
 // Scenes
 export { BaseScene, Stage, WizardScene } from "./convenience/scenes/index.ts";

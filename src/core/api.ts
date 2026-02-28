@@ -28,21 +28,18 @@ export class SignalAPI {
   }
 
   /**
-   * Send a message. `recipient` is either a phone number ("+491234567890")
-   * or a group ID.
+   * Send a message. `recipient` is either a phone number ("+491234567890"),
+   * a UUID, or a group ID ("group.base64...").
    */
   async send(
     recipient: string,
     text: string,
     options: SendOptions = {},
   ): Promise<SendResult> {
-    const isGroup = isGroupId(recipient);
     const payload: Record<string, unknown> = {
       number: this.#client.phoneNumber,
       message: text,
-      ...(isGroup
-        ? { group_id: recipient }
-        : { recipients: [recipient] }),
+      recipients: [recipient],
     };
 
     if (options.base64Attachments?.length) {
@@ -75,15 +72,12 @@ export class SignalAPI {
     recipient: string,
     reaction: SendReactionPayload,
   ): Promise<void> {
-    const isGroup = isGroupId(recipient);
     const payload: Record<string, unknown> = {
+      recipient,
       reaction: reaction.reaction,
       target_author: reaction.targetAuthor,
       timestamp: reaction.targetTimestamp,
       remove: reaction.isRemove ?? false,
-      ...(isGroup
-        ? { group_id: recipient }
-        : { recipient }),
     };
     await this.#client.post(
       `/v1/${encodeURIComponent(this.#client.phoneNumber)}/reaction`,
@@ -93,11 +87,9 @@ export class SignalAPI {
 
   /** Send a typing indicator. */
   async typing(recipient: string, stop = false): Promise<void> {
-    const isGroup = isGroupId(recipient);
     const payload: Record<string, unknown> = {
       account: this.#client.phoneNumber,
-      recipient: isGroup ? undefined : recipient,
-      group: isGroup ? recipient : undefined,
+      recipient,
       stop,
     };
     await this.#client.post("/v1/typing", payload);
@@ -105,12 +97,9 @@ export class SignalAPI {
 
   /** Delete a previously sent message by timestamp. */
   async deleteMessage(recipient: string, timestamp: number): Promise<void> {
-    const isGroup = isGroupId(recipient);
     const payload: Record<string, unknown> = {
+      recipient,
       timestamp,
-      ...(isGroup
-        ? { group_id: recipient }
-        : { recipient }),
     };
     await this.#client.post(
       `/v1/${encodeURIComponent(this.#client.phoneNumber)}/delete-message`,
@@ -142,9 +131,4 @@ export class SignalAPI {
   get httpClient(): HttpClient {
     return this.#client;
   }
-}
-
-/** Signal group IDs from signal-cli-rest-api use a "group." prefix. */
-function isGroupId(recipient: string): boolean {
-  return recipient.startsWith("group.");
 }

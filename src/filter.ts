@@ -4,6 +4,8 @@ import type {
   DeleteMessage,
   EditMessage,
   Envelope,
+  GroupInfo,
+  Reaction,
   ReceiptMessage,
   SyncMessage,
   TypingMessage,
@@ -13,14 +15,15 @@ import type {
 // --- Filter query string literals ---
 
 export type FilterQuery =
-  | "message"         // DataMessage that is NOT a reaction
+  | "message"         // DataMessage that is NOT a reaction or group update
   | "message:text"    // DataMessage with non-null text (and NOT a reaction)
   | "message:attachments" // DataMessage with at least one attachment
   | "message:quote"   // DataMessage with a quote
   | "message:reaction" // DataMessage where reaction != null
-  | "message:group"   // DataMessage from a group
+  | "message:group"   // DataMessage from a group (excludes group updates)
   | "message:private" // DataMessage from a 1-on-1 (no group)
   | "message:sticker" // DataMessage with a sticker
+  | "group_update"    // Group metadata/membership change (join, leave, rename, etc.)
   | "edit_message"    // EditMessage
   | "delete_message"  // DeleteMessage
   | "receipt"         // ReceiptMessage
@@ -34,7 +37,7 @@ export function matchFilter(ctx: Context, query: FilterQuery): boolean {
   const env = ctx.update.envelope;
   switch (query) {
     case "message":
-      return env.dataMessage != null && !env.dataMessage.reaction;
+      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo?.type !== "UPDATE";
     case "message:text":
       return (
         env.dataMessage != null &&
@@ -45,18 +48,21 @@ export function matchFilter(ctx: Context, query: FilterQuery): boolean {
     case "message:attachments":
       return (
         env.dataMessage != null &&
+        !env.dataMessage.reaction &&
         (env.dataMessage.attachments?.length ?? 0) > 0
       );
     case "message:quote":
-      return env.dataMessage != null && env.dataMessage.quote != null;
+      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.quote != null;
     case "message:reaction":
       return env.dataMessage != null && env.dataMessage.reaction != null;
     case "message:group":
-      return env.dataMessage != null && env.dataMessage.groupInfo != null;
+      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo != null && env.dataMessage.groupInfo.type !== "UPDATE";
     case "message:private":
-      return env.dataMessage != null && env.dataMessage.groupInfo == null;
+      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo == null;
+    case "group_update":
+      return env.dataMessage != null && env.dataMessage.groupInfo?.type === "UPDATE";
     case "message:sticker":
-      return env.dataMessage != null && env.dataMessage.sticker != null;
+      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.sticker != null;
     case "edit_message":
       return env.editMessage != null;
     case "delete_message":
@@ -82,31 +88,100 @@ export function matchFilter(ctx: Context, query: FilterQuery): boolean {
  */
 export type Filter<C extends Context, Q extends FilterQuery> =
   Q extends "message"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
   : Q extends "message:text"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; message: string } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; message: string } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
   : Q extends "message:attachments"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
   : Q extends "message:quote"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { quote: NonNullable<DataMessage["quote"]> } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; quote: NonNullable<DataMessage["quote"]> } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
   : Q extends "message:reaction"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: NonNullable<DataMessage["reaction"]> } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: NonNullable<DataMessage["reaction"]> } } };
+        dataMessage: DataMessage;
+        reaction: Reaction;
+        msgTimestamp: number;
+      }
   : Q extends "message:group"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { groupInfo: NonNullable<DataMessage["groupInfo"]> } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; groupInfo: NonNullable<DataMessage["groupInfo"]> } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        isGroup: true;
+        msgTimestamp: number;
+      }
   : Q extends "message:private"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { groupInfo: undefined } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; groupInfo: undefined } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        isGroup: false;
+        msgTimestamp: number;
+      }
   : Q extends "message:sticker"
-    ? C & { update: { envelope: Envelope & { dataMessage: DataMessage & { sticker: NonNullable<DataMessage["sticker"]> } } } }
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; sticker: NonNullable<DataMessage["sticker"]> } } };
+        dataMessage: DataMessage;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
+  : Q extends "group_update"
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { groupInfo: GroupInfo & { type: "UPDATE" } } } };
+        dataMessage: DataMessage;
+        groupUpdate: DataMessage & { groupInfo: GroupInfo & { type: "UPDATE" } };
+        isGroup: true;
+        msgTimestamp: number;
+      }
   : Q extends "edit_message"
-    ? C & { update: { envelope: Envelope & { editMessage: EditMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { editMessage: EditMessage } };
+        editMessage: EditMessage;
+        msgTimestamp: number;
+      }
   : Q extends "delete_message"
-    ? C & { update: { envelope: Envelope & { deleteMessage: DeleteMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { deleteMessage: DeleteMessage } };
+        deleteMessage: DeleteMessage;
+      }
   : Q extends "receipt"
-    ? C & { update: { envelope: Envelope & { receiptMessage: ReceiptMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { receiptMessage: ReceiptMessage } };
+        receipt: ReceiptMessage;
+      }
   : Q extends "typing"
-    ? C & { update: { envelope: Envelope & { typingMessage: TypingMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { typingMessage: TypingMessage } };
+        typingMessage: TypingMessage;
+      }
   : Q extends "call"
-    ? C & { update: { envelope: Envelope & { callMessage: CallMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { callMessage: CallMessage } };
+        callMessage: CallMessage;
+      }
   : Q extends "sync_message"
-    ? C & { update: { envelope: Envelope & { syncMessage: SyncMessage } } }
+    ? C & {
+        update: { envelope: Envelope & { syncMessage: SyncMessage } };
+        syncMessage: SyncMessage;
+      }
   : C;

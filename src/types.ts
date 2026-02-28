@@ -39,12 +39,15 @@ export interface DataMessage {
 
 export interface GroupInfo {
   groupId: string;
+  groupName?: string;
+  revision?: number;
   type: string; // "DELIVER" | "UPDATE" | "QUIT" | "UNKNOWN"
 }
 
 export interface Reaction {
   emoji: string;
-  targetAuthor: string; // phone number
+  targetAuthor: string; // UUID (or phone in older versions)
+  targetAuthorNumber: string | null; // phone number (can be null)
   targetAuthorUuid: string;
   targetSentTimestamp: number;
   isRemove: boolean;
@@ -147,16 +150,27 @@ export interface CallMessage {
 export interface Group {
   id: string;
   name: string;
-  isMember: boolean;
-  isBlocked: boolean;
-  members: GroupMember[];
-  pendingMembers: GroupMember[];
-  requestingMembers: GroupMember[];
-  admins: GroupMember[];
   description: string;
-  groupInviteLink: string | null;
-  messageExpirationTime: number;
-  isAnnouncementGroup: boolean;
+  revision?: number;
+  /**
+   * signal-cli-rest-api commonly returns flat string identifiers here
+   * (phone numbers and/or UUIDs), not structured GroupMember objects.
+   */
+  members: string[] | GroupMember[];
+  pending_invites?: string[];
+  pending_requests?: string[];
+  admins?: string[] | GroupMember[];
+  blocked?: boolean;
+  invite_link?: string;
+  internal_id?: string;
+  // Older/alternate response shapes
+  isMember?: boolean;
+  isBlocked?: boolean;
+  pendingMembers?: GroupMember[];
+  requestingMembers?: GroupMember[];
+  groupInviteLink?: string | null;
+  messageExpirationTime?: number;
+  isAnnouncementGroup?: boolean;
 }
 
 export interface GroupMember {

@@ -51,10 +51,10 @@ export interface WizardContextFlavor extends SceneContextFlavor {
 }
 
 export interface WizardController {
-  /** Advance to the next step. */
-  next(): Promise<void>;
-  /** Go back to the previous step. */
-  back(): Promise<void>;
+  /** Advance the cursor to the next step (runs on the next incoming update). */
+  advance(): Promise<void>;
+  /** Move the cursor back to the previous step (runs on the next incoming update). */
+  retreat(): Promise<void>;
   /** Jump to a specific step index. */
   selectStep(index: number): void;
   /** Current step index (0-based). */

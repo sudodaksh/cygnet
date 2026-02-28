@@ -1,12 +1,42 @@
 {
   "name": "cygnet",
-  "module": "index.ts",
+  "version": "0.1.0",
+  "description": "A modern framework for building Signal bots",
+  "keywords": [
+    "signal",
+    "signal-cli",
+    "signal-cli-rest-api",
+    "bot",
+    "bots",
+    "bot-framework",
+    "typescript"
+  ],
+  "repository": "https://github.com/sudodaksh/cygnet.git",
   "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest"
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   },
-  "peerDependencies": {
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "bun tsc --noEmit",
+    "build:js": "rimraf ./dist && bun build ./index.ts --outdir ./dist --target node --format esm --sourcemap=linked",
+    "build:types": "rimraf ./dist && bun tsc -p tsconfig.build.json && bun run ./scripts/fix-dts-imports.mjs",
+    "build": "bun run build:js && bun run build:types",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "rimraf": "^6.1.3",
     "typescript": "^5"
   }
 }

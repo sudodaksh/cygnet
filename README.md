@@ -1,86 +1,11 @@
-# cygnet
 
-A TypeScript framework for building [Signal](https://signal.org) bots. API modeled after [grammY](https://grammy.dev) — the same Composer-based middleware, type-safe filter queries, and context flavoring pattern, but talking to Signal instead of Telegram.
+<div align="center"><img src="./images/header.png"></div>
+<div align="center">
 
-Requires [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) as a sidecar.
+# a modern framework for building [signal](https://signal.org) bots
 
-## Starting the service automatically
+</div>
 
-signal can start [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) for you before the bot launches. Two modes are supported: **Docker** (default) and a **local binary**.
-
-### Docker (recommended)
-
-```typescript
-import { Bot, startSignalService } from "./src/mod.ts";
-
-const svc = await startSignalService({
-  configDir: "~/.local/share/signal-cli",  // host path with your Signal credentials
-});
-
-const bot = new Bot({
-  signalService: svc.url,                  // "http://localhost:8080"
-  phoneNumber: "+491234567890",
-});
-
-// Clean up on exit
-process.once("SIGTERM", () => { bot.stop(); svc.stop(); });
-process.once("SIGINT",  () => { bot.stop(); svc.stop(); });
-
-bot.command("start", (ctx) => ctx.reply("Hello!"));
-await bot.start();
-```
-
-`startSignalService()` will:
-1. Check if the container already exists (reuses it if stopped, skips creation if running)
-2. Otherwise run `docker run -d -p 8080:8080 -v configDir:/home/.local/share/signal-cli bbernhard/signal-cli-rest-api`
-3. Poll `GET /v1/health` until the service is ready (default timeout: 30 s)
-4. Resolve with a `ServiceHandle` containing `url` and `stop()`
-
-### Local binary
-
-```typescript
-const svc = await startSignalService({
-  mode: "binary",
-  binaryPath: "./bin/signal-cli-rest-api",
-  configDir: "~/.local/share/signal-cli",
-});
-```
-
-### All options
-
-```typescript
-const svc = await startSignalService({
-  // Required
-  configDir: "~/.local/share/signal-cli",
-
-  // Optional
-  mode: "docker",                        // "docker" (default) | "binary"
-  port: 8080,                            // default: 8080
-  signalMode: "native",                  // "native" (default) | "normal" | "json-rpc"
-
-  // Docker-specific
-  image: "bbernhard/signal-cli-rest-api",  // default image
-  containerName: "signal-service",       // default container name
-  removeOnStop: true,                      // remove container on stop() (default: true)
-                                           // set false to keep it for faster restarts
-
-  // Binary-specific
-  binaryPath: "./bin/signal-cli-rest-api", // required for mode: "binary"
-  attachmentTmpDir: "/tmp",
-  avatarTmpDir: "/tmp",
-
-  // Health check
-  startupTimeout: 30_000,     // ms to wait for /v1/health (default: 30s)
-  healthCheckInterval: 500,   // ms between health poll attempts (default: 500ms)
-});
-
-console.log(svc.url); // "http://localhost:8080"
-await svc.stop();     // stops + removes the container (or kills the process)
-```
-
-> **Note:** Your Signal account must already be registered and linked before starting the service. The `configDir` must contain valid signal-cli credentials. See the [signal-cli-rest-api docs](https://github.com/bbernhard/signal-cli-rest-api) for registration steps.
-
----
 
 ## Prerequisites
 
@@ -90,7 +15,7 @@ await svc.stop();     // stops + removes the container (or kills the process)
 ## Quick start
 
 ```typescript
-import { Bot } from "./src/mod.ts";
+import { Bot } from "cygnet";
 
 const bot = new Bot({
   signalService: "localhost:8080",
@@ -104,13 +29,26 @@ bot.start();
 ```
 
 ```bash
-bun run index.ts
+bun run examples/hello-world.ts
 ```
+
+---
+
+## Examples
+
+Runnable examples live in [examples/README.md](./examples/README.md):
+
+- [hello-world](./examples/hello-world.ts): minimal bot setup and basic text replies
+- [commands](./examples/commands.ts): command parsing and `ctx.match`
+- [group-updates](./examples/group-updates.ts): best-effort `group_update` handling with persisted state
+- [audio-files](./examples/audio-files.ts): handling incoming audio attachments
+- [wizard-register](./examples/wizard-register.ts): a session-backed multi-step registration flow
 
 ---
 
 ## Table of contents
 
+- [Examples](#examples)
 - [Bot setup](#bot-setup)
 - [Handling updates](#handling-updates)
   - [Commands](#commands)
@@ -135,11 +73,12 @@ bun run index.ts
 ## Bot setup
 
 ```typescript
-import { Bot } from "./src/mod.ts";
+import { Bot, FileStorage } from "cygnet";
 
 const bot = new Bot({
   signalService: "localhost:8080", // signal-cli-rest-api URL (scheme optional)
   phoneNumber: "+491234567890",    // the bot's registered number
+  groupStateStorage: new FileStorage(".cygnet-group-state.json"), // optional
 });
 
 bot.start(); // connects via WebSocket, auto-reconnects on disconnect
@@ -192,6 +131,7 @@ Filter queries are type-safe strings that narrow the context type at compile tim
 | `"message:group"` | Message sent in a group |
 | `"message:private"` | Message sent in a 1-on-1 DM |
 | `"message:sticker"` | Message with a sticker |
+| `"group_update"` | Group metadata or membership change |
 | `"edit_message"` | An edited message |
 | `"delete_message"` | A deleted message |
 | `"receipt"` | Read or delivery receipt |
@@ -248,7 +188,8 @@ ctx.update          // RawUpdate — the full raw envelope from signal-cli-rest-
 ctx.me              // string   — bot's own phone number
 
 ctx.dataMessage     // DataMessage | undefined — any data message (incl. reactions)
-ctx.message         // DataMessage | undefined — data message that is NOT a reaction
+ctx.message         // DataMessage | undefined — regular message (not reaction, not group_update)
+ctx.groupUpdate     // DataMessage | undefined — group metadata/membership update
 ctx.reaction        // Reaction   | undefined — the reaction, if this is a reaction update
 ctx.editMessage     // EditMessage   | undefined
 ctx.deleteMessage   // DeleteMessage | undefined
@@ -262,10 +203,40 @@ ctx.fromName        // string | undefined — sender display name
 ctx.fromUuid        // string | undefined — sender UUID
 ctx.chat            // string — group ID (for groups) or sender phone (for DMs)
 ctx.isGroup         // boolean
-ctx.text            // string | undefined — message text or edited text
+ctx.text            // string — message text or edited text ("" if none)
 ctx.msgTimestamp    // number | undefined — Unix ms
-ctx.match           // RegExpExecArray | null | undefined — set by bot.hears(RegExp)
+ctx.match           // string | RegExpExecArray | undefined — set by bot.hears()/bot.command()
 ```
+
+### Group state changes
+
+`signal-cli-rest-api` collapses group membership and metadata changes into the
+same `group_update` payload shape (`groupInfo.type === "UPDATE"`). Treat it as
+an eventually consistent state signal, not a perfect event log.
+
+cygnet keeps a per-bot group state cache (name, membership, last revision) and
+`ctx.inspectGroupUpdate()` uses that cache to classify updates as best-effort
+`joined`, `left`, `renamed`, `updated`, `stale`, or `unknown`.
+
+```typescript
+bot.on("group_update", async (ctx) => {
+  const details = await ctx.inspectGroupUpdate();
+  console.log(details);
+});
+```
+
+Notes:
+- `groupInfo.revision` is treated as the ordering key. Older or duplicate
+  revisions are returned as `stale`.
+- If a revision jump is detected, cygnet logs a gap warning and reconciles
+  against `getGroups()`.
+- `groupStateStorage` accepts a stricter direct-storage type. Built-in
+  `MemoryStorage` and `FileStorage` work, but wrappers like `enhanceStorage()`
+  intentionally do not.
+- This keeps group state on the same adapter family as sessions, while
+  preventing TTL wrappers from being used for revision tracking.
+- Even with the cache, missed upstream events mean cygnet can recover current
+  state, but not reconstruct the exact history of what happened while offline.
 
 ### Sending messages
 
@@ -327,7 +298,7 @@ await ctx.api.checkHealth();
 
 ## Middleware
 
-cygnet uses Koa-style `(ctx, next)` middleware, identical to grammY.
+cygnet uses Koa-style `(ctx, next)` middleware.
 
 ```typescript
 // Runs for every update
@@ -363,7 +334,7 @@ bot.errorBoundary(
 `Composer` instances can be used as sub-routers:
 
 ```typescript
-import { Composer } from "./src/mod.ts";
+import { Composer } from "cygnet";
 
 const admin = new Composer<MyContext>();
 admin.command("ban", (ctx) => { /* ... */ });
@@ -379,8 +350,8 @@ bot.filter((ctx) => admins.includes(ctx.from!), admin);
 Store per-chat data across messages. Requires a `SessionFlavor` on your context type.
 
 ```typescript
-import { Bot, Context, session, MemoryStorage } from "./src/mod.ts";
-import type { SessionFlavor } from "./src/mod.ts";
+import { Bot, Context, session, MemoryStorage } from "cygnet";
+import type { SessionFlavor } from "cygnet";
 
 interface MySession {
   count: number;
@@ -406,7 +377,7 @@ bot.on("message:text", (ctx) => {
 Implement `StorageAdapter<T>` to plug in any backend:
 
 ```typescript
-import type { StorageAdapter } from "./src/mod.ts";
+import type { StorageAdapter } from "cygnet";
 
 class RedisStorage<T> implements StorageAdapter<T> {
   async read(key: string): Promise<T | undefined> { /* ... */ }
@@ -417,7 +388,16 @@ class RedisStorage<T> implements StorageAdapter<T> {
 bot.use(session({ storage: new RedisStorage(), initial: () => ({ count: 0 }) }));
 ```
 
-The built-in `MemoryStorage` keeps data in-process and loses it on restart. Use a persistent adapter for production.
+The built-in `MemoryStorage` keeps data in-process and loses it on restart. Use a persistent adapter for production. `FileStorage` is a simple built-in JSON file adapter:
+
+```typescript
+import { FileStorage } from "cygnet";
+
+bot.use(session({
+  storage: new FileStorage(".cygnet-session.json"),
+  initial: () => ({ count: 0 }),
+}));
+```
 
 ### Session key
 
@@ -437,8 +417,8 @@ bot.use(session({
 Scenes let you build stateful multi-step conversations. They require `session` middleware.
 
 ```typescript
-import { Bot, Context, Stage, BaseScene, session } from "./src/mod.ts";
-import type { SessionFlavor, SceneContextFlavor, SceneSessionData } from "./src/mod.ts";
+import { Bot, Context, Stage, BaseScene, session } from "cygnet";
+import type { SessionFlavor, SceneContextFlavor, SceneSessionData } from "cygnet";
 
 interface MySession extends SceneSessionData { /* your fields */ }
 type MyContext = Context & SessionFlavor<MySession> & SceneContextFlavor;
@@ -456,11 +436,12 @@ const stage = new Stage<MyContext>([greetScene]);
 
 const bot = new Bot<MyContext>({ signalService: "...", phoneNumber: "..." });
 bot.use(session<MySession, MyContext>({ initial: () => ({}) }));
-bot.use(stage);
 
-bot.command("greet", Stage.enter("greet"));    // enter scene
-bot.command("cancel", Stage.leave());          // leave scene
-bot.command("restart", Stage.reenter());       // re-enter (reset state)
+bot.command("greet", stage.enter("greet"));    // enter scene
+bot.command("cancel", stage.leave());          // leave scene
+bot.command("restart", stage.reenter());       // re-enter (reset state)
+
+bot.use(stage);
 ```
 
 While inside a scene, only that scene's handlers run. Updates do not reach bot-level handlers.
@@ -481,11 +462,11 @@ State is persisted in the session automatically.
 
 ### WizardScene
 
-A `WizardScene` is a scene that executes a sequence of steps one at a time. Each step handles exactly one update, then waits.
+A `WizardScene` is a scene that executes a sequence of steps one at a time. Step 0 runs immediately when the scene is entered, and each later step handles exactly one incoming update.
 
 ```typescript
-import { WizardScene } from "./src/mod.ts";
-import type { WizardContext, WizardContextFlavor, SceneSessionData } from "./src/mod.ts";
+import { WizardScene } from "cygnet";
+import type { WizardContext, WizardContextFlavor, SceneSessionData } from "cygnet";
 
 interface MySession extends SceneSessionData {}
 type MyContext = Context & SessionFlavor<MySession> & WizardContextFlavor;
@@ -496,13 +477,13 @@ const registerWizard = new WizardScene<MyContext>(
   // Step 0
   async (ctx) => {
     await ctx.reply("What's your name?");
-    await ctx.wizard.next(); // advance to step 1
+    await ctx.wizard.advance(); // advance to step 1
   },
 
   // Step 1
   async (ctx) => {
     await ctx.reply(`Nice to meet you, ${ctx.text}! How old are you?`);
-    await ctx.wizard.next();
+    await ctx.wizard.advance();
   },
 
   // Step 2
@@ -516,8 +497,8 @@ const registerWizard = new WizardScene<MyContext>(
 Wizard controller:
 
 ```typescript
-ctx.wizard.next()              // advance one step
-ctx.wizard.back()              // go back one step
+ctx.wizard.advance()           // advance one step
+ctx.wizard.retreat()           // go back one step
 ctx.wizard.selectStep(n)       // jump to step n (0-based)
 ctx.wizard.cursor              // current step index
 ctx.wizard.state               // per-wizard state object (persisted)
@@ -585,7 +566,7 @@ Plugins like `session`, `Stage`, and `WizardScene` all use this pattern via thei
 
 | Member | Description |
 |---|---|
-| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.ContextConstructor` |
+| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.ContextConstructor`, `config.transport`, `config.pollingInterval`, `config.groupStateStorage`, `config.groupStateKey` |
 | `bot.start()` | Start WebSocket polling. Resolves only after `bot.stop()` is called. |
 | `bot.stop()` | Gracefully stop the bot. |
 | `bot.handleUpdate(update)` | Process a single `RawUpdate` manually (useful for custom transports). |

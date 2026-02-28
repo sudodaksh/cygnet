@@ -1,11 +1,18 @@
 import { Composer, run } from "./composer.ts";
-import { Context } from "./context.ts";
+import {
+  Context,
+  primeGroupStateCache,
+  restoreGroupStateCache,
+  snapshotGroupStateCache,
+} from "./context.ts";
 import { SignalAPI } from "./core/api.ts";
 import { BotError } from "./core/error.ts";
 import { PollingListener } from "./core/polling.ts";
 import { WebSocketListener } from "./core/websocket.ts";
 import type { UpdateSource } from "./core/source.ts";
 import type { RawUpdate, MaybePromise } from "./types.ts";
+import type { GroupStateSnapshot } from "./context.ts";
+import type { DirectStorageAdapter } from "./convenience/session.ts";
 
 export interface BotConfig {
   /** URL of the signal-cli-rest-api service, e.g. "localhost:8080" or "http://localhost:8080" */
@@ -27,6 +34,10 @@ export interface BotConfig {
    * Polling interval in ms (default: 1000). Only used with transport: "polling".
    */
   pollingInterval?: number;
+  /** Optional storage adapter for persisting group state across restarts. */
+  groupStateStorage?: DirectStorageAdapter<GroupStateSnapshot>;
+  /** Storage key for group state. Defaults to the bot phone number. */
+  groupStateKey?: string;
 }
 
 export class Bot<C extends Context = Context> extends Composer<C> {
@@ -45,6 +56,13 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       baseUrl: config.signalService,
       phoneNumber: config.phoneNumber,
     });
+    // Route forked middleware errors through the bot error handler
+    this._onForkError = (err, ctx) => {
+      const botError = new BotError<C>(err, ctx);
+      Promise.resolve(this.#errorHandler(botError)).catch((handlerErr) => {
+        console.error("[cygnet] Error in error handler:", handlerErr);
+      });
+    };
   }
 
   /**
@@ -68,6 +86,16 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       );
     }
     this.#me = this.config.phoneNumber;
+
+    await this.#restoreGroupStateCache();
+
+    try {
+      const groups = await this.api.getGroups();
+      primeGroupStateCache(this.#me, groups);
+      await this.#persistGroupStateCache();
+    } catch (err) {
+      console.warn("[cygnet] Failed to prime group state cache:", err);
+    }
   }
 
   /**
@@ -123,10 +151,47 @@ export class Bot<C extends Context = Context> extends Composer<C> {
         console.error("[cygnet] Error in error handler:", handlerErr);
       }
     }
+
+    if (update.envelope.dataMessage?.groupInfo?.type === "UPDATE") {
+      await this.#persistGroupStateCache();
+    }
+  }
+
+  async #restoreGroupStateCache(): Promise<void> {
+    const storage = this.config.groupStateStorage;
+    if (!storage) return;
+
+    try {
+      const snapshot = await storage.read(this.#groupStateKey());
+      if (!snapshot) return;
+      if (typeof snapshot !== "object" || Array.isArray(snapshot)) {
+        console.warn("[cygnet] Ignoring invalid group state snapshot.");
+        return;
+      }
+      restoreGroupStateCache(this.#me, snapshot);
+    } catch (err) {
+      console.warn("[cygnet] Failed to restore group state cache:", err);
+    }
+  }
+
+  async #persistGroupStateCache(): Promise<void> {
+    const storage = this.config.groupStateStorage;
+    if (!storage) return;
+
+    try {
+      const snapshot = snapshotGroupStateCache(this.#me);
+      await storage.write(this.#groupStateKey(), snapshot);
+    } catch (err) {
+      console.warn("[cygnet] Failed to persist group state cache:", err);
+    }
+  }
+
+  #groupStateKey(): string {
+    return this.config.groupStateKey ?? this.#me;
   }
 }
 
 function defaultErrorHandler(err: BotError): void {
-  console.error("[cygnet] Unhandled error:", err);
-  throw err.error;
+  console.error("[cygnet] Unhandled error:", err.error);
+  console.error("[cygnet] Set bot.catch() to handle errors");
 }
