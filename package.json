@@ -1,6 +1,6 @@
 {
   "name": "cygnet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A modern framework for building Signal bots",
   "keywords": [
     "signal",
@@ -28,10 +28,11 @@
     "README.md"
   ],
   "scripts": {
+    "clean": "rimraf ./dist",
     "typecheck": "bun tsc --noEmit",
-    "build:js": "rimraf ./dist && bun build ./index.ts --outdir ./dist --target node --format esm --sourcemap=linked",
-    "build:types": "rimraf ./dist && bun tsc -p tsconfig.build.json && bun run ./scripts/fix-dts-imports.mjs",
-    "build": "bun run build:js && bun run build:types",
+    "build:js": "bun build ./index.ts --outdir ./dist --target node --format esm --sourcemap=linked",
+    "build:types": "bun tsc -p tsconfig.build.json && bun run ./scripts/fix-dts-imports.mjs",
+    "build": "bun run clean && bun run build:js && bun run build:types",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
