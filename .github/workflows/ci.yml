@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-tests:
+        description: Run test suite (enable once tests are added)
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      run-tests:
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Build
+        run: bun run build
+
+      - name: Test
+        if: ${{ inputs.run-tests }}
+        run: bun test

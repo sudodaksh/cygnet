@@ -7,6 +7,67 @@ const bot = new Bot({
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// /setprofile Bot Name | bio — update the bot's profile
+bot.command("setprofile", async (ctx) => {
+  const args = ctx.match?.toString().trim() ?? "";
+  const [name, ...rest] = args.split("|").map((s) => s.trim());
+  const about = rest.join("|").trim() || undefined;
+  await bot.api.updateProfile({ name: name || "Cygnet Bot", about });
+  await ctx.reply(`Profile updated! Name: "${name || "Cygnet Bot"}"${about ? `, Bio: "${about}"` : ""}`);
+});
+
+// /rename New Name — rename the current group
+bot.command("rename", async (ctx) => {
+  if (!ctx.isGroup) return ctx.reply("Use this in a group.");
+  const name = ctx.match?.toString().trim();
+  if (!name) return ctx.reply("Usage: /rename New Name");
+  await bot.api.updateGroup(ctx.chat, { name });
+  await ctx.reply(`Group renamed to "${name}".`);
+});
+
+// /desc New description — update group description
+bot.command("desc", async (ctx) => {
+  if (!ctx.isGroup) return ctx.reply("Use this in a group.");
+  const description = ctx.match?.toString().trim();
+  if (!description) return ctx.reply("Usage: /desc Some description");
+  await bot.api.updateGroup(ctx.chat, { description });
+  await ctx.reply("Group description updated.");
+});
+
+// /lockdown — restrict editing and adding members to admins only
+bot.command("lockdown", async (ctx) => {
+  if (!ctx.isGroup) return ctx.reply("Use this in a group.");
+  await bot.api.updateGroup(ctx.chat, {
+    permissions: {
+      editGroupPermission: "only-admins",
+      addMembersPermission: "only-admins",
+    },
+  });
+  await ctx.reply("Group locked down — only admins can edit or add members.");
+});
+
+// /unlock — allow all members to edit and add members
+bot.command("unlock", async (ctx) => {
+  if (!ctx.isGroup) return ctx.reply("Use this in a group.");
+  await bot.api.updateGroup(ctx.chat, {
+    permissions: {
+      editGroupPermission: "every-member",
+      addMembersPermission: "every-member",
+    },
+  });
+  await ctx.reply("Group unlocked — all members can edit and add members.");
+});
+
+// /makegroup Group Name — create a group and add you to it
+bot.command("makegroup", async (ctx) => {
+  const name = ctx.match?.toString().trim() || "Cygnet Group";
+  const group = await bot.api.createGroup({
+    name,
+    members: [ctx.sender],
+  });
+  await bot.api.send(group.id, `Group "${name}" created!`);
+});
+
 // /kickme — create a group, add you, then kick you
 bot.command("kickme", async (ctx) => {
   const user = ctx.sender;

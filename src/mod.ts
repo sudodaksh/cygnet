@@ -96,5 +96,6 @@ export type {
   UpdateGroupOptions,
   GroupPermissions,
   GroupLinkState,
+  UpdateProfileOptions,
   MaybePromise,
 } from "./types.ts";

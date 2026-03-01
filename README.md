@@ -59,9 +59,43 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 
 ---
 
+## Releasing
+
+This repository uses Changesets for changelogs and version PRs.
+
+Workflows:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/changesets.yml`
+- `.github/workflows/publish-on-version-change.yml`
+
+Day-to-day flow:
+
+1. For user-facing changes, run `bun run changeset` and commit the generated `.changeset/*.md` file.
+2. Merge those PRs into `main`.
+3. `changesets.yml` creates/updates a release PR (`chore(release): version packages`) with:
+   - `package.json` version bump
+   - `CHANGELOG.md` updates
+4. Merge the release PR.
+
+Publish behavior:
+
+- `publish-on-version-change.yml` runs when `package.json` changes on `main`.
+- It depends on `ci.yml`, verifies version changes, and publishes only if that version is not on npm.
+- Auto-publish is intentionally disabled until tests are added:
+  - set repository variable `ENABLE_AUTO_PUBLISH=true` when ready.
+
+Setup required:
+
+- Add `NPM_TOKEN` as a repository secret (`Settings -> Secrets and variables -> Actions`).
+- Use an npm automation token with publish permission for this package.
+
+---
+
 ## Table of contents
 
 - [Examples](#examples)
+- [Releasing](#releasing)
 - [Bot setup](#bot-setup)
 - [Handling updates](#handling-updates)
   - [Commands](#commands)

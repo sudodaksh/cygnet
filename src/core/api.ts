@@ -6,6 +6,7 @@ import type {
   SendReactionPayload,
   SendResult,
   UpdateGroupOptions,
+  UpdateProfileOptions,
 } from "../types.ts";
 
 export class SignalAPI {
@@ -212,6 +213,19 @@ export class SignalAPI {
   /** Leave a group. */
   async leaveGroup(groupId: string): Promise<void> {
     await this.#client.post(`${this.#groupPath(groupId)}/quit`);
+  }
+
+  // --- Profile ---
+
+  /** Update the bot's profile (name, avatar, bio). */
+  async updateProfile(options: UpdateProfileOptions): Promise<void> {
+    const payload: Record<string, unknown> = { name: options.name };
+    if (options.base64Avatar !== undefined) payload.base64_avatar = options.base64Avatar;
+    if (options.about !== undefined) payload.about = options.about;
+    await this.#client.put(
+      `/v1/profiles/${encodeURIComponent(this.#client.phoneNumber)}`,
+      payload,
+    );
   }
 
   /** Download a received attachment by ID. Returns raw bytes. */

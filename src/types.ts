@@ -260,5 +260,13 @@ export interface UpdateGroupOptions {
   permissions?: GroupPermissions;
 }
 
+// --- Profile types ---
+
+export interface UpdateProfileOptions {
+  name: string;
+  base64Avatar?: string;
+  about?: string;
+}
+
 // Utility
 export type MaybePromise<T> = T | Promise<T>;
