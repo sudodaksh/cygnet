@@ -36,37 +36,36 @@ export type FilterQuery =
 export function matchFilter(ctx: Context, query: FilterQuery): boolean {
   const env = ctx.update.envelope;
   switch (query) {
-    case "message":
-      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo?.type !== "UPDATE";
-    case "message:text":
-      return (
-        env.dataMessage != null &&
-        !env.dataMessage.reaction &&
-        typeof env.dataMessage.message === "string" &&
-        env.dataMessage.message.length > 0
-      );
-    case "message:attachments":
-      return (
-        env.dataMessage != null &&
-        !env.dataMessage.reaction &&
-        (env.dataMessage.attachments?.length ?? 0) > 0
-      );
+    case "message": {
+      const dm = env.dataMessage;
+      return dm != null && !dm.reaction && !dm.remoteDelete && dm.groupInfo?.type !== "UPDATE";
+    }
+    case "message:text": {
+      const dm = env.dataMessage;
+      return dm != null && !dm.reaction && !dm.remoteDelete && typeof dm.message === "string" && dm.message.length > 0;
+    }
+    case "message:attachments": {
+      const dm = env.dataMessage;
+      return dm != null && !dm.reaction && !dm.remoteDelete && (dm.attachments?.length ?? 0) > 0;
+    }
     case "message:quote":
-      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.quote != null;
+      return env.dataMessage != null && !env.dataMessage.reaction && !env.dataMessage.remoteDelete && env.dataMessage.quote != null;
     case "message:reaction":
       return env.dataMessage != null && env.dataMessage.reaction != null;
-    case "message:group":
-      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo != null && env.dataMessage.groupInfo.type !== "UPDATE";
+    case "message:group": {
+      const dm = env.dataMessage;
+      return dm != null && !dm.reaction && !dm.remoteDelete && dm.groupInfo != null && dm.groupInfo.type !== "UPDATE";
+    }
     case "message:private":
-      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.groupInfo == null;
+      return env.dataMessage != null && !env.dataMessage.reaction && !env.dataMessage.remoteDelete && env.dataMessage.groupInfo == null;
     case "group_update":
       return env.dataMessage != null && env.dataMessage.groupInfo?.type === "UPDATE";
     case "message:sticker":
-      return env.dataMessage != null && !env.dataMessage.reaction && env.dataMessage.sticker != null;
+      return env.dataMessage != null && !env.dataMessage.reaction && !env.dataMessage.remoteDelete && env.dataMessage.sticker != null;
     case "edit_message":
       return env.editMessage != null;
     case "delete_message":
-      return env.deleteMessage != null;
+      return (env.dataMessage?.remoteDelete != null) || (env.deleteMessage != null);
     case "receipt":
       return env.receiptMessage != null;
     case "typing":

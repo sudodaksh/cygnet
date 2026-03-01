@@ -32,6 +32,7 @@ export interface DataMessage {
   quote?: Quote;
   reaction?: Reaction; // present = this DataMessage IS a reaction
   sticker?: Sticker;
+  remoteDelete?: { timestamp: number }; // present = this is a remote delete for the message with this timestamp
   expiresInSeconds: number;
   viewOnce: boolean;
   isExpirationUpdate?: boolean;
@@ -118,7 +119,7 @@ export interface ViewedSyncMessage {
 
 export interface EditMessage {
   targetSentTimestamp: number;
-  message: DataMessage;
+  dataMessage: DataMessage;
 }
 
 export interface DeleteMessage {

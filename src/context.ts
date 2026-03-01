@@ -185,7 +185,7 @@ export class Context {
    */
   get message(): DataMessage | undefined {
     const dm = this.update.envelope.dataMessage;
-    return dm && !dm.reaction && dm.groupInfo?.type !== "UPDATE" ? dm : undefined;
+    return dm && !dm.reaction && !dm.remoteDelete && dm.groupInfo?.type !== "UPDATE" ? dm : undefined;
   }
 
   /**
@@ -195,6 +195,14 @@ export class Context {
   get reaction(): Reaction | undefined {
     const dm = this.update.envelope.dataMessage;
     return dm?.reaction ?? undefined;
+  }
+
+  /**
+   * The timestamp of the message that was remotely deleted.
+   * Undefined if this is not a remote delete event.
+   */
+  get remoteDeleteTimestamp(): number | undefined {
+    return this.update.envelope.dataMessage?.remoteDelete?.timestamp;
   }
 
   /**
@@ -240,7 +248,7 @@ export class Context {
     const dm = this.update.envelope.dataMessage;
     if (dm?.groupInfo?.groupId) return `group.${btoa(dm.groupInfo.groupId)}`;
     const em = this.update.envelope.editMessage;
-    if (em?.message?.groupInfo?.groupId) return `group.${btoa(em.message.groupInfo.groupId)}`;
+    if (em?.dataMessage?.groupInfo?.groupId) return `group.${btoa(em.dataMessage.groupInfo.groupId)}`;
     const typing = this.update.envelope.typingMessage;
     if (typing?.groupId) return `group.${btoa(typing.groupId)}`;
     return this.update.envelope.sourceNumber || this.update.envelope.source;
@@ -250,7 +258,7 @@ export class Context {
   get isGroup(): boolean {
     return (
       this.update.envelope.dataMessage?.groupInfo != null ||
-      this.update.envelope.editMessage?.message?.groupInfo != null
+      this.update.envelope.editMessage?.dataMessage?.groupInfo != null
     );
   }
 
@@ -261,8 +269,8 @@ export class Context {
       return dm.message;
     }
     const em = this.update.envelope.editMessage;
-    if (em && typeof em.message.message === "string") {
-      return em.message.message;
+    if (em && typeof em.dataMessage.message === "string") {
+      return em.dataMessage.message;
     }
     return "";
   }
@@ -271,7 +279,7 @@ export class Context {
   get msgTimestamp(): number | undefined {
     return (
       this.update.envelope.dataMessage?.timestamp ??
-      this.update.envelope.editMessage?.message?.timestamp ??
+      this.update.envelope.editMessage?.dataMessage?.timestamp ??
       this.update.envelope.timestamp
     );
   }

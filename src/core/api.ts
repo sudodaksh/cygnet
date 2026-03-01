@@ -64,7 +64,11 @@ export class SignalAPI {
       payload.edit_timestamp = options.editTimestamp;
     }
 
-    return this.#client.post<SendResult>("/v2/send", payload);
+    const raw = await this.#client.post<Record<string, unknown>>("/v2/send", payload);
+    return {
+      ...raw,
+      timestamp: Number(raw.timestamp),
+    } as SendResult;
   }
 
   /** Send or remove a reaction on a message. */
@@ -88,12 +92,13 @@ export class SignalAPI {
 
   /** Send a typing indicator. */
   async typing(recipient: string, stop = false): Promise<void> {
-    const payload: Record<string, unknown> = {
-      account: this.#client.phoneNumber,
-      recipient,
-      stop,
-    };
-    await this.#client.post("/v1/typing", payload);
+    const path = `/v1/typing-indicator/${encodeURIComponent(this.#client.phoneNumber)}`;
+    const payload: Record<string, unknown> = { recipient };
+    if (stop) {
+      await this.#client.delete(path, payload);
+    } else {
+      await this.#client.put(path, payload);
+    }
   }
 
   /** Delete a previously sent message by timestamp. */
@@ -102,8 +107,8 @@ export class SignalAPI {
       recipient,
       timestamp,
     };
-    await this.#client.post(
-      `/v1/${encodeURIComponent(this.#client.phoneNumber)}/delete-message`,
+    await this.#client.delete(
+      `/v1/remote-delete/${encodeURIComponent(this.#client.phoneNumber)}`,
       payload,
     );
   }

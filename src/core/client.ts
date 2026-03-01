@@ -36,6 +36,15 @@ export class HttpClient {
     return this.#handleResponse<T>(res);
   }
 
+  async put<T>(path: string, body?: unknown): Promise<T> {
+    const res = await fetch(this.baseUrl + path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+    return this.#handleResponse<T>(res);
+  }
+
   async delete<T>(path: string, body?: unknown): Promise<T> {
     const res = await fetch(this.baseUrl + path, {
       method: "DELETE",
