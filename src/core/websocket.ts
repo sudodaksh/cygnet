@@ -1,3 +1,5 @@
+import { defaultLogger } from "./logger.ts";
+import type { Logger } from "./logger.ts";
 import type { RawUpdate } from "../types.ts";
 import type { UpdateSource } from "./source.ts";
 
@@ -6,6 +8,8 @@ export interface WebSocketListenerOptions {
   maxReconnectDelay?: number;
   /** Initial reconnect delay in ms (default: 1000) */
   initialReconnectDelay?: number;
+  /** Logger instance. Defaults to the built-in default logger. */
+  logger?: Logger;
 }
 
 /**
@@ -17,6 +21,7 @@ export class WebSocketListener implements UpdateSource {
   readonly #url: string;
   readonly #maxDelay: number;
   readonly #initialDelay: number;
+  readonly #logger: Logger;
   #stopped = false;
   #ws: WebSocket | null = null;
 
@@ -24,6 +29,7 @@ export class WebSocketListener implements UpdateSource {
     this.#url = wsUrl;
     this.#maxDelay = options.maxReconnectDelay ?? 30_000;
     this.#initialDelay = options.initialReconnectDelay ?? 1_000;
+    this.#logger = options.logger ?? defaultLogger;
   }
 
   stop(): void {
@@ -40,7 +46,7 @@ export class WebSocketListener implements UpdateSource {
         delay = this.#initialDelay; // reset on clean disconnect
       } catch (err) {
         if (this.#stopped) break;
-        console.error(`[cygnet] WebSocket error, reconnecting in ${delay}ms:`, err);
+        this.#logger.warn(`WebSocket error, reconnecting in ${delay}ms:`, err);
         await sleep(delay);
         delay = Math.min(delay * 2, this.#maxDelay);
       }
@@ -64,7 +70,7 @@ export class WebSocketListener implements UpdateSource {
         resolve?.();
         resolve = null;
       } catch (err) {
-        console.error("[cygnet] Failed to parse WebSocket message:", err);
+        this.#logger.warn("Failed to parse WebSocket message:", err);
       }
     });
 

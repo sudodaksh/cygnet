@@ -2,6 +2,7 @@ import type { MaybePromise } from "./types.ts";
 import type { FilterQuery, Filter } from "./filter.ts";
 import type { Context } from "./context.ts";
 import { BotError } from "./core/error.ts";
+import { defaultLogger } from "./core/logger.ts";
 
 // --- Core middleware types ---
 
@@ -73,7 +74,7 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
 
   /** Error handler for background middleware (fork). Bot overrides to route through bot.catch(). */
   protected _onForkError: (err: unknown, ctx: C) => void =
-    (err) => console.error("[cygnet] Error in forked middleware:", err);
+    (err) => defaultLogger.error("Error in forked middleware:", err);
 
   constructor(...middleware: Middleware<C>[]) {
     this.#handler = middleware.length > 0

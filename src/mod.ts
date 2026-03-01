@@ -38,7 +38,11 @@ export type { UpdateSource } from "./core/source.ts";
 export type { ClientConfig } from "./core/client.ts";
 
 // Errors
-export { BotError, SignalError } from "./core/error.ts";
+export { BotError, SignalError, CygnetError } from "./core/error.ts";
+
+// Logger
+export { createLogger, defaultLogger } from "./core/logger.ts";
+export type { Logger, LogLevel } from "./core/logger.ts";
 
 // Session
 export { session, MemoryStorage, FileStorage, enhanceStorage } from "./convenience/session.ts";

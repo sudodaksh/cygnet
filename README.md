@@ -59,43 +59,9 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 
 ---
 
-## Releasing
-
-This repository uses Changesets for changelogs, version PRs, and npm publishing.
-
-Workflows:
-
-- `.github/workflows/ci.yml`
-- `.github/workflows/changesets.yml`
-
-Day-to-day flow:
-
-1. For user-facing changes, run `bun run changeset` and commit the generated `.changeset/*.md` file.
-2. Open a PR and merge it into `main`.
-3. `changesets.yml` creates/updates a release PR (`chore(release): version packages`) with:
-   - `package.json` version bump
-   - `CHANGELOG.md` updates
-4. Merge the release PR.
-5. On that merge, the same workflow publishes to npm (if enabled).
-
-Publish behavior:
-
-- Auto publish is controlled by repository variable `ENABLE_AUTO_PUBLISH`.
-- Set `ENABLE_AUTO_PUBLISH=true` to enable publish from merged release PRs.
-
-Setup required (trusted publishing):
-
-- In npm, open `https://www.npmjs.com/package/cygnet/access` and configure a **Trusted Publisher** for this GitHub repository/workflow (`.github/workflows/changesets.yml`).
-- Keep workflow permission `id-token: write` enabled (already configured in `changesets.yml`).
-- If your repo/org disallows PR creation by `GITHUB_TOKEN`, add a PAT secret named `CHANGESETS_GITHUB_TOKEN` with `contents` and `pull-requests` write access.
-- `NPM_TOKEN` is not required when trusted publishing is configured.
-
----
-
 ## Table of contents
 
 - [Examples](#examples)
-- [Releasing](#releasing)
 - [Bot setup](#bot-setup)
 - [Handling updates](#handling-updates)
   - [Commands](#commands)
@@ -112,9 +78,11 @@ Setup required (trusted publishing):
   - [Scene state](#scene-state)
   - [WizardScene](#wizardscene)
 - [Error handling](#error-handling)
+- [Logging](#logging)
 - [Context flavoring](#context-flavoring)
 - [API reference](#api-reference)
 - [Setting up signal-cli-rest-api](#setting-up-signal-cli-rest-api)
+- [Releasing](#releasing)
 
 ---
 
@@ -127,6 +95,7 @@ const bot = new Bot({
   signalService: "localhost:8080", // signal-cli-rest-api URL (scheme optional)
   phoneNumber: "+491234567890",    // the bot's registered number
   groupStateStorage: new FileStorage(".cygnet-group-state.json"), // optional
+  logLevel: "info",  // optional: "debug" | "info" | "warn" | "error" | "silent"
 });
 
 bot.start(); // connects via WebSocket, auto-reconnects on disconnect
@@ -563,16 +532,95 @@ bot.catch((err) => {
 });
 ```
 
-`BotError` wraps the original error with the context that was being processed when it was thrown. The default handler logs and rethrows.
+`BotError` wraps the original error with the context that was being processed when it was thrown.
+By default, cygnet logs unhandled runtime errors and continues running.
 
-For localised error handling, use `errorBoundary`:
+Startup and config errors throw `CygnetError` with clean, actionable messages and no noisy stack traces:
+
+```
+CygnetError: signalService is required — provide the URL of your signal-cli-rest-api instance (e.g. "localhost:8080")
+```
+
+```typescript
+import { CygnetError } from "cygnet";
+
+bot.start().catch((err) => {
+  if (err instanceof CygnetError) {
+    // Config or connectivity issue — message is already clean
+    console.error(err.message);
+    process.exit(1);
+  }
+  throw err;
+});
+```
+
+For localised error handling within middleware, use `errorBoundary`:
 
 ```typescript
 bot.errorBoundary(
-  (err, ctx) => ctx.reply("Something went wrong, sorry!"),
+  async (err) => {
+    await err.ctx.reply("Something went wrong, sorry!");
+  },
   dangerousHandler,
 );
 ```
+
+---
+
+## Logging
+
+cygnet has a built-in structured logger with level filtering and colored output.
+
+### Log level
+
+```typescript
+const bot = new Bot({
+  signalService: "localhost:8080",
+  phoneNumber: "+491234567890",
+  logLevel: "debug", // "debug" | "info" | "warn" | "error" | "silent"
+});
+```
+
+Default is `"info"`. Set to `"silent"` to suppress all framework output.
+
+### Custom logger
+
+Pass any object with `debug`, `info`, `warn`, and `error` methods — compatible with pino, consola, winston, and similar libraries:
+
+```typescript
+import pino from "pino";
+
+const bot = new Bot({
+  signalService: "localhost:8080",
+  phoneNumber: "+491234567890",
+  logger: pino(), // or console, or any { debug, info, warn, error } object
+});
+```
+
+When a custom `logger` is provided, `logLevel` is ignored — filtering is your logger's responsibility.
+
+### Using the logger in middleware
+
+The bot's logger is exposed as `bot.logger`:
+
+```typescript
+bot.use((ctx, next) => {
+  bot.logger.info(`Update from ${ctx.from}`);
+  return next();
+});
+```
+
+### Output format
+
+In a TTY with color support:
+
+```
+[cygnet] Bot started as +491234567890 (websocket)     ← cyan
+[cygnet] Failed to prime group state cache             ← yellow
+[cygnet] Cannot reach signal-cli-rest-api              ← red
+```
+
+Colors are disabled automatically when piping to a file, or when `NO_COLOR` is set. `FORCE_COLOR` forces colors on.
 
 ---
 
@@ -614,7 +662,7 @@ Plugins like `session`, `Stage`, and `WizardScene` all use this pattern via thei
 
 | Member | Description |
 |---|---|
-| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.ContextConstructor`, `config.transport`, `config.pollingInterval`, `config.groupStateStorage`, `config.groupStateKey` |
+| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.logLevel`, `config.logger`, `config.ContextConstructor`, `config.transport`, `config.pollingInterval`, `config.groupStateStorage`, `config.groupStateKey` |
 | `bot.start()` | Start WebSocket polling. Resolves only after `bot.stop()` is called. |
 | `bot.stop()` | Gracefully stop the bot. |
 | `bot.handleUpdate(update)` | Process a single `RawUpdate` manually (useful for custom transports). |
@@ -701,3 +749,25 @@ curl http://localhost:8080/v1/health
 ```
 
 You're now ready to run a bot.
+
+
+## Releasing
+
+> Maintainer section. If you're just building bots, you can ignore this.
+
+cygnet uses **Changesets** + GitHub Actions for versioning, changelogs, and npm publish.
+
+1. Add a changeset for user-facing changes:
+   ```bash
+   bun run changeset
+   ```
+2. Merge your PR into `main`.
+3. The `changesets.yml` workflow opens/updates a release PR (`chore(release): version packages`).
+4. Merge that release PR.
+5. If `ENABLE_AUTO_PUBLISH=true`, GitHub publishes to npm automatically.
+
+Notes:
+- CI workflow: `.github/workflows/ci.yml`
+- Release workflow: `.github/workflows/changesets.yml`
+- Publishing uses npm **Trusted Publishing** (OIDC), so `NPM_TOKEN` is not required.
+- If Actions cannot create release PRs, set `CHANGESETS_GITHUB_TOKEN` with `contents` + `pull-requests` write scope.
