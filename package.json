@@ -2,6 +2,7 @@
   "name": "cygnet",
   "version": "0.1.1",
   "description": "A modern framework for building Signal bots",
+  "license": "MIT",
   "keywords": [
     "signal",
     "signal-cli",

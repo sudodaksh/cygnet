@@ -4,13 +4,22 @@
 
 # a modern framework for building [signal](https://signal.org) bots
 
+![NPM Version](https://img.shields.io/npm/v/cygnet)
+![NPM Downloads](https://img.shields.io/npm/dm/cygnet)
+![NPM License](https://img.shields.io/npm/l/cygnet)
+
 </div>
 
+## Install
+
+```bash
+npm install cygnet
+```
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) (or Node.js with ESM)
-- A running [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) instance with your Signal number registered
+- A running [signal-cli-rest-api](https://github.com/bbernhard/signal-cli-rest-api) instance with your Signal number registered ([setup guide](#setting-up-signal-cli-rest-api))
 
 ## Quick start
 
@@ -40,6 +49,10 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 
 - [hello-world](./examples/hello-world.ts): minimal bot setup and basic text replies
 - [commands](./examples/commands.ts): command parsing and `ctx.match`
+- [reactions](./examples/reactions.ts): react to messages, handle incoming reactions
+- [quotes-and-replies](./examples/quotes-and-replies.ts): quote messages, handle incoming quotes
+- [typing-and-receipts](./examples/typing-and-receipts.ts): typing indicators, delivery/read receipts
+- [edit-and-delete](./examples/edit-and-delete.ts): edit and delete sent messages, handle edits/deletes
 - [group-updates](./examples/group-updates.ts): best-effort `group_update` handling with persisted state
 - [audio-files](./examples/audio-files.ts): handling incoming audio attachments
 - [wizard-register](./examples/wizard-register.ts): a session-backed multi-step registration flow
@@ -62,11 +75,12 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 - [Middleware](#middleware)
 - [Session](#session)
 - [Scenes](#scenes)
-  - [BaseScene](#basescene)
+  - [Scene state](#scene-state)
   - [WizardScene](#wizardscene)
 - [Error handling](#error-handling)
 - [Context flavoring](#context-flavoring)
 - [API reference](#api-reference)
+- [Setting up signal-cli-rest-api](#setting-up-signal-cli-rest-api)
 
 ---
 
@@ -603,3 +617,53 @@ Plugins like `session`, `Stage`, and `WizardScene` all use this pattern via thei
 ### Filter queries
 
 See the [filter queries table](#filter-queries) above.
+
+---
+
+## Setting up signal-cli-rest-api
+
+### 1. Start the Docker container
+
+```bash
+docker run -d --name signal-api --restart=always \
+  -p 8080:8080 \
+  -v $HOME/.local/share/signal-api:/home/.local/share/signal-cli \
+  -e 'MODE=json-rpc' \
+  bbernhard/signal-cli-rest-api
+```
+
+`MODE=json-rpc` is required for WebSocket support. Other modes (`native`, `normal`) only support REST polling.
+
+### 2. Register your phone number
+
+```bash
+curl -X POST 'http://localhost:8080/v1/register/+1234567890'
+```
+
+If you get a captcha error:
+
+1. Open https://signalcaptchas.org/registration/generate.html
+2. Open your browser's developer console (F12)
+3. Complete the captcha
+4. In the console, find the line: `Prevented navigation to "signalcaptcha://signal-hcaptcha-short.xxxxx..."`
+5. Copy the value after `signalcaptcha://` and pass it:
+
+```bash
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"captcha":"signal-hcaptcha-short.xxxxx..."}' \
+  'http://localhost:8080/v1/register/+1234567890'
+```
+
+### 3. Verify with the SMS code
+
+```bash
+curl -X POST 'http://localhost:8080/v1/register/+1234567890/verify/123456'
+```
+
+### 4. Confirm it's working
+
+```bash
+curl http://localhost:8080/v1/health
+```
+
+You're now ready to run a bot.
