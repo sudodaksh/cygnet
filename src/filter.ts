@@ -1,5 +1,6 @@
 import type { Context } from "./context.ts";
 import type {
+  Attachment,
   DataMessage,
   DeleteMessage,
   EditMessage,
@@ -102,9 +103,10 @@ export type Filter<C extends Context, Q extends FilterQuery> =
       }
   : Q extends "message:attachments"
     ? C & {
-        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined } } };
+        update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; attachments: Attachment[] } } };
         dataMessage: DataMessage;
         message: DataMessage;
+        attachments: Attachment[];
         msgTimestamp: number;
       }
   : Q extends "message:quote"

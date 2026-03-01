@@ -75,6 +75,25 @@ export class HttpClient {
     throw new SignalError(res.status, description);
   }
 
+  /** Fetch raw bytes (for binary downloads like attachments). */
+  async getBytes(path: string): Promise<Uint8Array> {
+    const res = await fetch(this.baseUrl + path, { method: "GET" });
+    if (!res.ok) {
+      let description: string;
+      try {
+        const body = (await res.json()) as {
+          error?: string;
+          message?: string;
+        };
+        description = body.error ?? body.message ?? res.statusText;
+      } catch {
+        description = res.statusText;
+      }
+      throw new SignalError(res.status, description);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
   /** WebSocket URL for receiving messages */
   wsReceiveUrl(): string {
     const wsBase = this.baseUrl

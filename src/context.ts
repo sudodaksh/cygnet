@@ -1,5 +1,6 @@
 import type { SignalAPI } from "./core/api.ts";
 import type {
+  Attachment,
   CallMessage,
   DataMessage,
   DeleteMessage,
@@ -262,6 +263,11 @@ export class Context {
     );
   }
 
+  /** Attachments on the current message. Empty array if none. */
+  get attachments(): Attachment[] {
+    return this.message?.attachments ?? this.editMessage?.dataMessage?.attachments ?? [];
+  }
+
   /** The text of the current message (DataMessage or EditMessage). Empty string if none. */
   get text(): string {
     const dm = this.update.envelope.dataMessage;
@@ -357,6 +363,14 @@ export class Context {
     const ts = timestamp ?? this.msgTimestamp;
     if (!ts) throw new Error("Cannot delete: no timestamp");
     await this.api.deleteMessage(this.chat, ts);
+  }
+
+  /**
+   * Download a received attachment by ID from signal-cli-rest-api storage.
+   * Returns raw bytes as a Uint8Array.
+   */
+  async downloadAttachment(id: string): Promise<Uint8Array> {
+    return this.api.downloadAttachment(id);
   }
 
   // --- Type guard methods ---

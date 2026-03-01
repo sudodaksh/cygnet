@@ -52,6 +52,10 @@ export type {
 } from "./convenience/session.ts";
 export { directStorageBrand } from "./convenience/session.ts";
 
+// Attachments
+export { encodeAttachment, encodeAttachmentBuffer } from "./convenience/attachments.ts";
+export type { EncodeAttachmentOptions } from "./convenience/attachments.ts";
+
 // Scenes
 export { BaseScene, Stage, WizardScene } from "./convenience/scenes/index.ts";
 export type {

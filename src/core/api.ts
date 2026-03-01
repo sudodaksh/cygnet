@@ -133,6 +133,25 @@ export class SignalAPI {
     );
   }
 
+  /** Download a received attachment by ID. Returns raw bytes. */
+  async downloadAttachment(id: string): Promise<Uint8Array> {
+    return this.#client.getBytes(
+      `/v1/attachments/${encodeURIComponent(id)}`,
+    );
+  }
+
+  /** List all stored attachment IDs. */
+  async listAttachments(): Promise<string[]> {
+    return this.#client.get<string[]>("/v1/attachments");
+  }
+
+  /** Delete a stored attachment by ID. */
+  async deleteAttachment(id: string): Promise<void> {
+    await this.#client.delete(
+      `/v1/attachments/${encodeURIComponent(id)}`,
+    );
+  }
+
   /** The underlying HTTP client (for advanced use). */
   get httpClient(): HttpClient {
     return this.#client;
