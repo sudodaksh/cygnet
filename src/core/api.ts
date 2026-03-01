@@ -1,9 +1,11 @@
 import { HttpClient, type ClientConfig } from "./client.ts";
 import type {
+  CreateGroupOptions,
   Group,
   SendOptions,
   SendReactionPayload,
   SendResult,
+  UpdateGroupOptions,
 } from "../types.ts";
 
 export class SignalAPI {
@@ -126,11 +128,90 @@ export class SignalAPI {
     });
   }
 
+  // --- Group management ---
+
+  #groupPath(groupId?: string): string {
+    const base = `/v1/groups/${encodeURIComponent(this.#client.phoneNumber)}`;
+    return groupId ? `${base}/${encodeURIComponent(groupId)}` : base;
+  }
+
   /** List groups the bot is a member of. */
   async getGroups(): Promise<Group[]> {
-    return this.#client.get<Group[]>(
-      `/v1/groups/${encodeURIComponent(this.#client.phoneNumber)}`,
-    );
+    return this.#client.get<Group[]>(this.#groupPath());
+  }
+
+  /** Get details for a specific group. */
+  async getGroup(groupId: string): Promise<Group> {
+    return this.#client.get<Group>(this.#groupPath(groupId));
+  }
+
+  /** Create a new group. Returns the created group's details. */
+  async createGroup(options: CreateGroupOptions): Promise<Group> {
+    const payload: Record<string, unknown> = {
+      name: options.name,
+      members: options.members,
+    };
+    if (options.description !== undefined) payload.description = options.description;
+    if (options.base64Avatar !== undefined) payload.base64_avatar = options.base64Avatar;
+    if (options.expirationTime !== undefined) payload.expiration_time = options.expirationTime;
+    if (options.groupLinkState !== undefined) payload.group_link = options.groupLinkState;
+    if (options.permissions) payload.permissions = options.permissions;
+    return this.#client.post<Group>(this.#groupPath(), payload);
+  }
+
+  /** Update group properties (name, description, avatar, permissions, etc.). */
+  async updateGroup(
+    groupId: string,
+    options: UpdateGroupOptions,
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {};
+    if (options.name !== undefined) payload.name = options.name;
+    if (options.description !== undefined) payload.description = options.description;
+    if (options.base64Avatar !== undefined) payload.base64_avatar = options.base64Avatar;
+    if (options.expirationTime !== undefined) payload.expiration_time = options.expirationTime;
+    if (options.groupLinkState !== undefined) payload.group_link = options.groupLinkState;
+    if (options.permissions) payload.permissions = options.permissions;
+    await this.#client.put(this.#groupPath(groupId), payload);
+  }
+
+  /** Download a group's avatar. Returns raw bytes. */
+  async getGroupAvatar(groupId: string): Promise<Uint8Array> {
+    return this.#client.getBytes(`${this.#groupPath(groupId)}/avatar`);
+  }
+
+  /** Add members to a group. */
+  async addMembers(groupId: string, members: string[]): Promise<void> {
+    await this.#client.post(`${this.#groupPath(groupId)}/members`, { members });
+  }
+
+  /** Remove members from a group. */
+  async removeMembers(groupId: string, members: string[]): Promise<void> {
+    await this.#client.delete(`${this.#groupPath(groupId)}/members`, { members });
+  }
+
+  /** Promote members to group admin. */
+  async addAdmins(groupId: string, admins: string[]): Promise<void> {
+    await this.#client.post(`${this.#groupPath(groupId)}/admins`, { admins });
+  }
+
+  /** Demote group admins. */
+  async removeAdmins(groupId: string, admins: string[]): Promise<void> {
+    await this.#client.delete(`${this.#groupPath(groupId)}/admins`, { admins });
+  }
+
+  /** Block a group. */
+  async blockGroup(groupId: string): Promise<void> {
+    await this.#client.post(`${this.#groupPath(groupId)}/block`);
+  }
+
+  /** Join a group via invite link. */
+  async joinGroup(groupId: string): Promise<void> {
+    await this.#client.post(`${this.#groupPath(groupId)}/join`);
+  }
+
+  /** Leave a group. */
+  async leaveGroup(groupId: string): Promise<void> {
+    await this.#client.post(`${this.#groupPath(groupId)}/quit`);
   }
 
   /** Download a received attachment by ID. Returns raw bytes. */

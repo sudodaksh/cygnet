@@ -231,5 +231,34 @@ export interface SendReactionPayload {
   isRemove?: boolean;
 }
 
+// --- Group management types ---
+
+export type GroupLinkState = "disabled" | "enabled" | "enabled-with-approval";
+
+export interface GroupPermissions {
+  editGroupPermission?: "every-member" | "only-admins";
+  addMembersPermission?: "every-member" | "only-admins";
+  sendMessagesPermission?: "every-member" | "only-admins";
+}
+
+export interface CreateGroupOptions {
+  name: string;
+  members: string[];
+  description?: string;
+  base64Avatar?: string;
+  expirationTime?: number;
+  groupLinkState?: GroupLinkState;
+  permissions?: GroupPermissions;
+}
+
+export interface UpdateGroupOptions {
+  name?: string;
+  description?: string;
+  base64Avatar?: string;
+  expirationTime?: number;
+  groupLinkState?: GroupLinkState;
+  permissions?: GroupPermissions;
+}
+
 // Utility
 export type MaybePromise<T> = T | Promise<T>;
