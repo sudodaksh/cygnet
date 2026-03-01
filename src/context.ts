@@ -373,6 +373,43 @@ export class Context {
     return this.api.downloadAttachment(id);
   }
 
+  // --- Group management convenience methods ---
+
+  #assertGroup(): string {
+    if (!this.isGroup) throw new Error("Not a group chat");
+    return this.chat;
+  }
+
+  /** Get details for the current group. */
+  async getGroupInfo(): Promise<Group> {
+    return this.api.getGroup(this.#assertGroup());
+  }
+
+  /** Add members to the current group. */
+  async addMembers(members: string[]): Promise<void> {
+    return this.api.addMembers(this.#assertGroup(), members);
+  }
+
+  /** Remove members from the current group. */
+  async removeMembers(members: string[]): Promise<void> {
+    return this.api.removeMembers(this.#assertGroup(), members);
+  }
+
+  /** Promote members to admin in the current group. */
+  async addAdmins(members: string[]): Promise<void> {
+    return this.api.addAdmins(this.#assertGroup(), members);
+  }
+
+  /** Demote admins in the current group. */
+  async removeAdmins(members: string[]): Promise<void> {
+    return this.api.removeAdmins(this.#assertGroup(), members);
+  }
+
+  /** Leave the current group. */
+  async leaveGroup(): Promise<void> {
+    return this.api.leaveGroup(this.#assertGroup());
+  }
+
   // --- Type guard methods ---
 
   /**

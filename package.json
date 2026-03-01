@@ -34,9 +34,14 @@
     "build:js": "bun build ./index.ts --outdir ./dist --target node --format esm --sourcemap=linked",
     "build:types": "bun tsc -p tsconfig.build.json && bun run ./scripts/fix-dts-imports.mjs",
     "build": "bun run clean && bun run build:js && bun run build:types",
+    "changeset": "changeset",
+    "changeset:status": "changeset status --verbose",
+    "version-packages": "changeset version",
+    "release": "changeset publish",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "@types/bun": "latest",
     "rimraf": "^6.1.3",
     "typescript": "^5"
