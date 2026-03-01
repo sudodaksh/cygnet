@@ -59,9 +59,43 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 
 ---
 
+## Releasing
+
+This repository uses Changesets for changelogs, version PRs, and npm publishing.
+
+Workflows:
+
+- `.github/workflows/ci.yml`
+- `.github/workflows/changesets.yml`
+
+Day-to-day flow:
+
+1. For user-facing changes, run `bun run changeset` and commit the generated `.changeset/*.md` file.
+2. Open a PR and merge it into `main`.
+3. `changesets.yml` creates/updates a release PR (`chore(release): version packages`) with:
+   - `package.json` version bump
+   - `CHANGELOG.md` updates
+4. Merge the release PR.
+5. On that merge, the same workflow publishes to npm (if enabled).
+
+Publish behavior:
+
+- Auto publish is controlled by repository variable `ENABLE_AUTO_PUBLISH`.
+- Set `ENABLE_AUTO_PUBLISH=true` to enable publish from merged release PRs.
+
+Setup required (trusted publishing):
+
+- In npm, open `https://www.npmjs.com/package/cygnet/access` and configure a **Trusted Publisher** for this GitHub repository/workflow (`.github/workflows/changesets.yml`).
+- Keep workflow permission `id-token: write` enabled (already configured in `changesets.yml`).
+- If your repo/org disallows PR creation by `GITHUB_TOKEN`, add a PAT secret named `CHANGESETS_GITHUB_TOKEN` with `contents` and `pull-requests` write access.
+- `NPM_TOKEN` is not required when trusted publishing is configured.
+
+---
+
 ## Table of contents
 
 - [Examples](#examples)
+- [Releasing](#releasing)
 - [Bot setup](#bot-setup)
 - [Handling updates](#handling-updates)
   - [Commands](#commands)

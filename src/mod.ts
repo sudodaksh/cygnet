@@ -92,5 +92,10 @@ export type {
   SendReactionPayload,
   QuoteOptions,
   MentionOptions,
+  CreateGroupOptions,
+  UpdateGroupOptions,
+  GroupPermissions,
+  GroupLinkState,
+  UpdateProfileOptions,
   MaybePromise,
 } from "./types.ts";
