@@ -83,11 +83,12 @@ Publish behavior:
 - Auto publish is controlled by repository variable `ENABLE_AUTO_PUBLISH`.
 - Set `ENABLE_AUTO_PUBLISH=true` to enable publish from merged release PRs.
 
-Setup required:
+Setup required (trusted publishing):
 
-- Add `NPM_TOKEN` as a repository secret (`Settings -> Secrets and variables -> Actions`).
-- Use an npm automation token with publish permission for this package.
+- In npm, open `https://www.npmjs.com/package/cygnet/access` and configure a **Trusted Publisher** for this GitHub repository/workflow (`.github/workflows/changesets.yml`).
+- Keep workflow permission `id-token: write` enabled (already configured in `changesets.yml`).
 - If your repo/org disallows PR creation by `GITHUB_TOKEN`, add a PAT secret named `CHANGESETS_GITHUB_TOKEN` with `contents` and `pull-requests` write access.
+- `NPM_TOKEN` is not required when trusted publishing is configured.
 
 ---
 
