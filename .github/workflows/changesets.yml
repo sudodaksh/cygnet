@@ -1,4 +1,4 @@
-name: Changesets
+name: Release (Changesets)
 
 on:
   push:
@@ -9,13 +9,21 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  id-token: write
 
 concurrency:
-  group: changesets-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  version:
+  ci:
+    uses: ./.github/workflows/ci.yml
+    with:
+      run-tests: false
+
+  release:
+    needs:
+      - ci
     runs-on: ubuntu-latest
 
     steps:
@@ -31,15 +39,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Create or update release PR
+      - name: Create or update release PR (publishing disabled)
+        if: ${{ vars.ENABLE_AUTO_PUBLISH != 'true' }}
         uses: changesets/action@v1
         with:
           version: bun run version-packages
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.CHANGESETS_GITHUB_TOKEN != '' && secrets.CHANGESETS_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Create/update release PR and publish to npm
+        if: ${{ vars.ENABLE_AUTO_PUBLISH == 'true' }}
+        uses: changesets/action@v1
+        with:
+          version: bun run version-packages
+          publish: bun run release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.CHANGESETS_GITHUB_TOKEN != '' && secrets.CHANGESETS_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

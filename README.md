@@ -61,34 +61,33 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 
 ## Releasing
 
-This repository uses Changesets for changelogs and version PRs.
+This repository uses Changesets for changelogs, version PRs, and npm publishing.
 
 Workflows:
 
 - `.github/workflows/ci.yml`
 - `.github/workflows/changesets.yml`
-- `.github/workflows/publish-on-version-change.yml`
 
 Day-to-day flow:
 
 1. For user-facing changes, run `bun run changeset` and commit the generated `.changeset/*.md` file.
-2. Merge those PRs into `main`.
+2. Open a PR and merge it into `main`.
 3. `changesets.yml` creates/updates a release PR (`chore(release): version packages`) with:
    - `package.json` version bump
    - `CHANGELOG.md` updates
 4. Merge the release PR.
+5. On that merge, the same workflow publishes to npm (if enabled).
 
 Publish behavior:
 
-- `publish-on-version-change.yml` runs when `package.json` changes on `main`.
-- It depends on `ci.yml`, verifies version changes, and publishes only if that version is not on npm.
-- Auto-publish is intentionally disabled until tests are added:
-  - set repository variable `ENABLE_AUTO_PUBLISH=true` when ready.
+- Auto publish is controlled by repository variable `ENABLE_AUTO_PUBLISH`.
+- Set `ENABLE_AUTO_PUBLISH=true` to enable publish from merged release PRs.
 
 Setup required:
 
 - Add `NPM_TOKEN` as a repository secret (`Settings -> Secrets and variables -> Actions`).
 - Use an npm automation token with publish permission for this package.
+- If your repo/org disallows PR creation by `GITHUB_TOKEN`, add a PAT secret named `CHANGESETS_GITHUB_TOKEN` with `contents` and `pull-requests` write access.
 
 ---
 
