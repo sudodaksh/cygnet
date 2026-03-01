@@ -77,12 +77,13 @@ export class SignalAPI {
       reaction: reaction.reaction,
       target_author: reaction.targetAuthor,
       timestamp: reaction.targetTimestamp,
-      remove: reaction.isRemove ?? false,
     };
-    await this.#client.post(
-      `/v1/${encodeURIComponent(this.#client.phoneNumber)}/reaction`,
-      payload,
-    );
+    const path = `/v1/reactions/${encodeURIComponent(this.#client.phoneNumber)}`;
+    if (reaction.isRemove) {
+      await this.#client.delete(path, payload);
+    } else {
+      await this.#client.post(path, payload);
+    }
   }
 
   /** Send a typing indicator. */
