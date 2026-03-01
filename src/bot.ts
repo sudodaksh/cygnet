@@ -6,10 +6,12 @@ import {
   snapshotGroupStateCache,
 } from "./context.ts";
 import { SignalAPI } from "./core/api.ts";
-import { BotError } from "./core/error.ts";
+import { BotError, CygnetError } from "./core/error.ts";
+import { createLogger } from "./core/logger.ts";
 import { PollingListener } from "./core/polling.ts";
 import { WebSocketListener } from "./core/websocket.ts";
 import type { UpdateSource } from "./core/source.ts";
+import type { Logger, LogLevel } from "./core/logger.ts";
 import type { RawUpdate, MaybePromise } from "./types.ts";
 import type { GroupStateSnapshot } from "./context.ts";
 import type { DirectStorageAdapter } from "./convenience/session.ts";
@@ -38,36 +40,58 @@ export interface BotConfig {
   groupStateStorage?: DirectStorageAdapter<GroupStateSnapshot>;
   /** Storage key for group state. Defaults to the bot phone number. */
   groupStateKey?: string;
+  /**
+   * Minimum log level. Default: "info".
+   * Set to "silent" to suppress all framework output.
+   * Ignored if a custom `logger` is provided.
+   */
+  logLevel?: LogLevel;
+  /**
+   * Custom logger instance. Must implement `debug`, `info`, `warn`, `error`.
+   * Compatible with pino, consola, winston, or any object with those methods.
+   * When provided, `logLevel` is ignored (filtering is your logger's job).
+   */
+  logger?: Logger;
 }
 
 export class Bot<C extends Context = Context> extends Composer<C> {
   readonly api: SignalAPI;
   readonly config: BotConfig;
+  /** The bot's logger. Use this in your own middleware for consistent output. */
+  readonly logger: Logger;
 
   #me: string = "";
   #stopped = false;
   #listener: UpdateSource | null = null;
-  #errorHandler: (err: BotError<C>) => MaybePromise<void> = defaultErrorHandler;
+  #errorHandler: (err: BotError<C>) => MaybePromise<void>;
 
   constructor(config: BotConfig) {
     super();
     this.config = config;
+    this.logger = config.logger ?? createLogger(config.logLevel ?? "info");
     this.api = new SignalAPI({
       baseUrl: config.signalService,
       phoneNumber: config.phoneNumber,
     });
+
+    // Default error handler — logs and continues (does NOT stop the bot).
+    // Follows Express/Koa convention: log clearly, keep running.
+    this.#errorHandler = (err: BotError<C>) => {
+      this.logger.error("Unhandled error:", err.error);
+      this.logger.error("Set bot.catch() to handle errors");
+    };
+
     // Route forked middleware errors through the bot error handler
     this._onForkError = (err, ctx) => {
       const botError = new BotError<C>(err, ctx);
       Promise.resolve(this.#errorHandler(botError)).catch((handlerErr) => {
-        console.error("[cygnet] Error in error handler:", handlerErr);
+        this.logger.error("Error in error handler:", handlerErr);
       });
     };
   }
 
   /**
    * Override the default error handler.
-   * The default handler logs the error and re-throws it.
    */
   catch(handler: (err: BotError<C>) => MaybePromise<void>): this {
     this.#errorHandler = handler;
@@ -75,18 +99,36 @@ export class Bot<C extends Context = Context> extends Composer<C> {
   }
 
   /**
-   * Verify signal-cli-rest-api is reachable.
+   * Verify configuration and check that signal-cli-rest-api is reachable.
    * Called automatically by start().
+   *
+   * Throws `CygnetError` for configuration/connectivity problems.
+   * These produce clean, stack-free output when unhandled.
    */
   async init(): Promise<void> {
-    const healthy = await this.api.checkHealth();
-    if (!healthy) {
-      throw new Error(
-        `[cygnet] Cannot reach signal-cli-rest-api at ${this.config.signalService}. Is it running?`,
+    // --- Config validation (fail fast, clear messages) ---
+    if (!this.config.signalService) {
+      throw new CygnetError(
+        'signalService is required — provide the URL of your signal-cli-rest-api instance (e.g. "localhost:8080")',
       );
     }
+    if (!this.config.phoneNumber) {
+      throw new CygnetError(
+        'phoneNumber is required — provide the bot\'s registered phone number (e.g. "+491234567890")',
+      );
+    }
+
+    // --- Health check ---
+    const healthy = await this.api.checkHealth();
+    if (!healthy) {
+      throw new CygnetError(
+        `Cannot reach signal-cli-rest-api at ${this.api.httpClient.baseUrl} — is it running?`,
+      );
+    }
+
     this.#me = this.config.phoneNumber;
 
+    // --- Restore + prime group state cache ---
     await this.#restoreGroupStateCache();
 
     try {
@@ -94,7 +136,7 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       primeGroupStateCache(this.#me, groups);
       await this.#persistGroupStateCache();
     } catch (err) {
-      console.warn("[cygnet] Failed to prime group state cache:", err);
+      this.logger.warn("Failed to prime group state cache:", err);
     }
   }
 
@@ -111,12 +153,15 @@ export class Bot<C extends Context = Context> extends Composer<C> {
     if (transport === "polling") {
       this.#listener = new PollingListener(this.api.httpClient, {
         interval: this.config.pollingInterval,
+        logger: this.logger,
       });
-      console.log(`[cygnet] Bot started as ${this.#me} (polling)`);
+      this.logger.info(`Bot started as ${this.#me} (polling)`);
     } else {
       const wsUrl = this.api.httpClient.wsReceiveUrl();
-      this.#listener = new WebSocketListener(wsUrl);
-      console.log(`[cygnet] Bot started as ${this.#me} (websocket)`);
+      this.#listener = new WebSocketListener(wsUrl, {
+        logger: this.logger,
+      });
+      this.logger.info(`Bot started as ${this.#me} (websocket)`);
     }
 
     for await (const update of this.#listener) {
@@ -131,7 +176,7 @@ export class Bot<C extends Context = Context> extends Composer<C> {
   stop(): void {
     this.#stopped = true;
     this.#listener?.stop();
-    console.log("[cygnet] Bot stopped.");
+    this.logger.info("Bot stopped.");
   }
 
   /**
@@ -141,6 +186,7 @@ export class Bot<C extends Context = Context> extends Composer<C> {
   async handleUpdate(update: RawUpdate): Promise<void> {
     const ContextClass = this.config.ContextConstructor ?? Context;
     const ctx = new ContextClass(update, this.api, this.#me) as C;
+    (ctx as Context)._logger = this.logger;
     try {
       await run(this.middleware(), ctx);
     } catch (err) {
@@ -148,7 +194,7 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       try {
         await this.#errorHandler(botError);
       } catch (handlerErr) {
-        console.error("[cygnet] Error in error handler:", handlerErr);
+        this.logger.error("Error in error handler:", handlerErr);
       }
     }
 
@@ -165,12 +211,12 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       const snapshot = await storage.read(this.#groupStateKey());
       if (!snapshot) return;
       if (typeof snapshot !== "object" || Array.isArray(snapshot)) {
-        console.warn("[cygnet] Ignoring invalid group state snapshot.");
+        this.logger.warn("Ignoring invalid group state snapshot.");
         return;
       }
       restoreGroupStateCache(this.#me, snapshot);
     } catch (err) {
-      console.warn("[cygnet] Failed to restore group state cache:", err);
+      this.logger.warn("Failed to restore group state cache:", err);
     }
   }
 
@@ -182,16 +228,11 @@ export class Bot<C extends Context = Context> extends Composer<C> {
       const snapshot = snapshotGroupStateCache(this.#me);
       await storage.write(this.#groupStateKey(), snapshot);
     } catch (err) {
-      console.warn("[cygnet] Failed to persist group state cache:", err);
+      this.logger.warn("Failed to persist group state cache:", err);
     }
   }
 
   #groupStateKey(): string {
     return this.config.groupStateKey ?? this.#me;
   }
-}
-
-function defaultErrorHandler(err: BotError): void {
-  console.error("[cygnet] Unhandled error:", err.error);
-  console.error("[cygnet] Set bot.catch() to handle errors");
 }

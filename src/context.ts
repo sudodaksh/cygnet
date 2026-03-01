@@ -1,4 +1,6 @@
 import type { SignalAPI } from "./core/api.ts";
+import { defaultLogger } from "./core/logger.ts";
+import type { Logger } from "./core/logger.ts";
 import type {
   Attachment,
   CallMessage,
@@ -134,6 +136,9 @@ export class Context {
    * Holds the RegExpExecArray when a RegExp trigger matched.
    */
   match?: string | RegExpExecArray;
+
+  /** @internal Logger instance — set by Bot after construction. */
+  _logger: Logger = defaultLogger;
 
   constructor(update: RawUpdate, api: SignalAPI, me: string) {
     this.update = update;
@@ -506,8 +511,8 @@ export class Context {
       incomingRevision > previousRevision + 1
     );
     if (hasGap) {
-      console.warn(
-        `[cygnet] Group update gap for ${groupId}: expected revision ${previousRevision + 1}, got ${incomingRevision}`,
+      this._logger.warn(
+        `Group update gap for ${groupId}: expected revision ${previousRevision + 1}, got ${incomingRevision}`,
       );
     }
 

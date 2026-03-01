@@ -1,3 +1,5 @@
+import { defaultLogger } from "./logger.ts";
+import type { Logger } from "./logger.ts";
 import type { RawUpdate } from "../types.ts";
 import type { UpdateSource } from "./source.ts";
 import type { HttpClient } from "./client.ts";
@@ -5,6 +7,8 @@ import type { HttpClient } from "./client.ts";
 export interface PollingListenerOptions {
   /** Polling interval in ms (default: 1000) */
   interval?: number;
+  /** Logger instance. Defaults to the built-in default logger. */
+  logger?: Logger;
 }
 
 /**
@@ -19,12 +23,14 @@ export class PollingListener implements UpdateSource {
   readonly #client: HttpClient;
   readonly #receivePath: string;
   readonly #interval: number;
+  readonly #logger: Logger;
   #stopped = false;
 
   constructor(client: HttpClient, options: PollingListenerOptions = {}) {
     this.#client = client;
     this.#receivePath = `/v1/receive/${encodeURIComponent(client.phoneNumber)}`;
     this.#interval = options.interval ?? 1_000;
+    this.#logger = options.logger ?? defaultLogger;
   }
 
   stop(): void {
@@ -43,7 +49,7 @@ export class PollingListener implements UpdateSource {
         }
       } catch (err) {
         if (this.#stopped) return;
-        console.error("[cygnet] Polling error:", err);
+        this.#logger.warn("Polling error:", err);
       }
       if (!this.#stopped) {
         await sleep(this.#interval);
