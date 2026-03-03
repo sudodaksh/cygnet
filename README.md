@@ -56,6 +56,10 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 - [group-updates](./examples/group-updates.ts): best-effort `group_update` handling with persisted state
 - [audio-files](./examples/audio-files.ts): handling incoming audio attachments
 - [wizard-register](./examples/wizard-register.ts): a session-backed multi-step registration flow
+- [styled-text](./examples/styled-text.ts): bold, italic, strikethrough, spoiler, and monospace formatting
+- [polls](./examples/polls.ts): create, vote, close, and track Signal polls
+- [webhook](./examples/webhook.ts): receive updates via HTTP webhook instead of WebSocket
+- [contacts](./examples/contacts.ts): list, look up, and update Signal contacts
 
 ---
 
@@ -70,7 +74,11 @@ Runnable examples live in [examples/README.md](./examples/README.md):
   - [Arbitrary filters](#arbitrary-filters)
 - [Context](#context)
   - [Sending messages](#sending-messages)
+  - [Link previews](#link-previews)
+  - [Styled text](#styled-text)
   - [Reactions](#reactions)
+  - [Polls](#polls)
+  - [Contacts](#contacts)
   - [Other actions](#other-actions)
 - [Middleware](#middleware)
 - [Session](#session)
@@ -80,6 +88,7 @@ Runnable examples live in [examples/README.md](./examples/README.md):
 - [Error handling](#error-handling)
 - [Logging](#logging)
 - [Context flavoring](#context-flavoring)
+- [Webhook transport](#webhook-transport)
 - [API reference](#api-reference)
 - [Setting up signal-cli-rest-api](#setting-up-signal-cli-rest-api)
 - [Releasing](#releasing)
@@ -95,7 +104,8 @@ const bot = new Bot({
   signalService: "localhost:8080", // signal-cli-rest-api URL (scheme optional)
   phoneNumber: "+491234567890",    // the bot's registered number
   groupStateStorage: new FileStorage(".cygnet-group-state.json"), // optional
-  logLevel: "info",  // optional: "debug" | "info" | "warn" | "error" | "silent"
+  logLevel: "info",     // optional: "debug" | "info" | "warn" | "error" | "silent"
+  transport: "websocket", // optional: "websocket" (default) | "polling" | "webhook"
 });
 
 bot.start(); // connects via WebSocket, auto-reconnects on disconnect
@@ -103,6 +113,8 @@ bot.stop();  // graceful shutdown
 ```
 
 `bot.start()` calls `GET /v1/health` on startup and then opens a WebSocket to `ws://{signalService}/v1/receive/{phoneNumber}`. Updates are processed sequentially.
+
+See [Webhook transport](#webhook-transport) for the `"webhook"` option.
 
 ---
 
@@ -148,6 +160,9 @@ Filter queries are type-safe strings that narrow the context type at compile tim
 | `"message:group"` | Message sent in a group |
 | `"message:private"` | Message sent in a 1-on-1 DM |
 | `"message:sticker"` | Message with a sticker |
+| `"message:poll_create"` | A new poll |
+| `"message:poll_vote"` | A vote on a poll |
+| `"message:poll_close"` | A closed/terminated poll |
 | `"group_update"` | Group metadata or membership change |
 | `"edit_message"` | An edited message |
 | `"delete_message"` | A deleted message |
@@ -214,6 +229,9 @@ ctx.receipt         // ReceiptMessage | undefined
 ctx.typingMessage   // TypingMessage  | undefined
 ctx.callMessage     // CallMessage    | undefined
 ctx.syncMessage     // SyncMessage    | undefined
+ctx.pollCreate      // PollCreate     | undefined — poll creation details
+ctx.pollVote        // PollVote       | undefined — poll vote details
+ctx.pollTerminate   // PollTerminate  | undefined — poll closed/terminated
 
 ctx.from            // string | undefined — sender phone number
 ctx.fromName        // string | undefined — sender display name
@@ -276,6 +294,41 @@ await ctx.quote("Good point!");
 await ctx.api.editMessage(ctx.chat, previousTimestamp, "corrected text");
 ```
 
+### Link previews
+
+Attach a rich URL preview to a message. The `url` must start with `https://` and must appear in the message text.
+
+```typescript
+await ctx.reply("Check out https://signal.org", {
+  linkPreview: {
+    url: "https://signal.org",
+    title: "Signal",
+    description: "Speak freely.",
+    base64Thumbnail: "...", // optional
+  },
+});
+```
+
+### Styled text
+
+Use `textMode: "styled"` to enable Signal's Markdown-like formatting:
+
+```typescript
+await ctx.reply("**bold**, *italic*, ~strikethrough~, ||spoiler||, `monospace`", {
+  textMode: "styled",
+});
+```
+
+| Syntax | Renders as |
+|---|---|
+| `**text**` | **bold** |
+| `*text*` | *italic* |
+| `~text~` | ~~strikethrough~~ |
+| `\|\|text\|\|` | spoiler |
+| `` `text` `` | `monospace` |
+
+See [`examples/styled-text.ts`](./examples/styled-text.ts) for more.
+
 ### Reactions
 
 ```typescript
@@ -285,6 +338,78 @@ await ctx.react("👍");
 // Remove a reaction
 await ctx.unreact("👍");
 ```
+
+### Polls
+
+Create, vote in, and close Signal polls:
+
+```typescript
+// Create a poll
+const result = await ctx.createPoll("What's for lunch?", ["Pizza", "Sushi", "Tacos"], {
+  allowMultipleSelections: true,
+});
+// result.timestamp — identifies this poll for voting/closing
+
+// Vote in a poll (answer indices are 1-based)
+await ctx.voteInPoll({
+  pollAuthor: "+491234567890",
+  pollTimestamp: result.timestamp,
+  selectedAnswers: [1, 3], // Pizza and Tacos
+});
+
+// Close a poll
+await ctx.closePoll(result.timestamp);
+```
+
+Handle incoming poll events:
+
+```typescript
+bot.on("message:poll_create", (ctx) => {
+  const poll = ctx.pollCreate; // PollCreate — guaranteed
+  console.log(poll.question, poll.options, poll.allowMultiple);
+});
+
+bot.on("message:poll_vote", (ctx) => {
+  const vote = ctx.pollVote; // PollVote — guaranteed
+  console.log(vote.optionIndexes, vote.voteCount); // 0-based indices
+});
+
+bot.on("message:poll_close", (ctx) => {
+  console.log("Poll closed:", ctx.pollTerminate.targetSentTimestamp);
+});
+```
+
+> **Note:** Incoming `pollVote.optionIndexes` are **0-based** (from signal-cli), but outgoing `selectedAnswers` are **1-based** (the REST API subtracts 1 internally).
+
+See [`examples/polls.ts`](./examples/polls.ts) for a full working example with live vote tallying.
+
+### Contacts
+
+List, look up, and update Signal contacts:
+
+```typescript
+// List all contacts
+const contacts = await ctx.api.listContacts();
+
+// Include non-contact recipients (anyone you've messaged)
+const everyone = await ctx.api.listContacts(true);
+
+// Look up a single contact by UUID
+const contact = await ctx.api.getContact("uuid-here");
+console.log(contact.profileName, contact.profile.about);
+
+// Update a contact
+await ctx.api.updateContact({
+  recipient: "+491234567890",
+  name: "Alice",
+  expirationInSeconds: 3600,
+});
+
+// Get a contact's avatar (binary)
+const avatar = await ctx.api.getContactAvatar("uuid-here");
+```
+
+See [`examples/contacts.ts`](./examples/contacts.ts) for more.
 
 ### Other actions
 
@@ -656,13 +781,49 @@ Plugins like `session`, `Stage`, and `WizardScene` all use this pattern via thei
 
 ---
 
+## Webhook transport
+
+Instead of connecting via WebSocket, the bot can receive updates via HTTP. signal-cli-rest-api POSTs each incoming message to your bot's URL when `RECEIVE_WEBHOOK_URL` is set.
+
+```typescript
+const bot = new Bot({
+  signalService: "localhost:8080",
+  phoneNumber: "+491234567890",
+  transport: "webhook",
+  webhook: {
+    port: 9080,           // default: 9080
+    host: "0.0.0.0",      // default: "0.0.0.0"
+    path: "/webhook",     // default: "/webhook"
+  },
+});
+
+bot.start();
+```
+
+On the signal-cli-rest-api side, set the environment variable:
+
+```bash
+docker run -d --name signal-api \
+  -p 8080:8080 \
+  -e 'MODE=json-rpc' \
+  -e 'RECEIVE_WEBHOOK_URL=http://host.docker.internal:9080/webhook' \
+  -v $HOME/.local/share/signal-api:/home/.local/share/signal-cli \
+  bbernhard/signal-cli-rest-api
+```
+
+The webhook listener accepts both JSON-RPC wrapped payloads (what signal-cli-rest-api actually sends) and plain `RawUpdate` objects.
+
+See [`examples/webhook.ts`](./examples/webhook.ts) for a complete setup.
+
+---
+
 ## API reference
 
 ### `Bot<C>`
 
 | Member | Description |
 |---|---|
-| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.logLevel`, `config.logger`, `config.ContextConstructor`, `config.transport`, `config.pollingInterval`, `config.groupStateStorage`, `config.groupStateKey` |
+| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.logLevel`, `config.logger`, `config.ContextConstructor`, `config.transport` (`"websocket"` \| `"polling"` \| `"webhook"`), `config.pollingInterval`, `config.webhook` (`{ port?, host?, path? }`), `config.groupStateStorage`, `config.groupStateKey` |
 | `bot.start()` | Start WebSocket polling. Resolves only after `bot.stop()` is called. |
 | `bot.stop()` | Gracefully stop the bot. |
 | `bot.handleUpdate(update)` | Process a single `RawUpdate` manually (useful for custom transports). |
@@ -688,11 +849,18 @@ Plugins like `session`, `Stage`, and `WizardScene` all use this pattern via thei
 
 | Method | Description |
 |---|---|
-| `send(to, text, options?)` | Send a message |
+| `send(to, text, options?)` | Send a message (supports `linkPreview`, `textMode`, etc.) |
 | `react(to, payload)` | Send or remove a reaction |
 | `typing(to, stop?)` | Send typing indicator |
 | `editMessage(to, timestamp, text)` | Edit a sent message |
 | `deleteMessage(to, timestamp)` | Delete a sent message |
+| `createPoll(to, poll)` | Create a poll → `{ timestamp }` |
+| `voteInPoll(to, vote)` | Vote in a poll (1-based answer indices) |
+| `closePoll(to, timestamp)` | Close/terminate a poll |
+| `listContacts(allRecipients?)` | List contacts (pass `true` to include all recipients) |
+| `getContact(uuid)` | Look up a single contact by UUID |
+| `updateContact(options)` | Update a contact's name or expiration |
+| `getContactAvatar(uuid)` | Get a contact's avatar as `Uint8Array` |
 | `getGroups()` | List groups the bot is in |
 | `checkHealth()` | Returns `true` if signal-cli-rest-api is reachable |
 
