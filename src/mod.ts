@@ -33,9 +33,11 @@ export type { FilterQuery, Filter } from "./filter.ts";
 export { SignalAPI } from "./core/api.ts";
 export { HttpClient } from "./core/client.ts";
 export { WebSocketListener } from "./core/websocket.ts";
+export { WebhookListener } from "./core/webhook.ts";
 export { PollingListener } from "./core/polling.ts";
 export type { UpdateSource } from "./core/source.ts";
 export type { ClientConfig } from "./core/client.ts";
+export type { WebhookListenerOptions } from "./core/webhook.ts";
 
 // Errors
 export { BotError, SignalError, CygnetError } from "./core/error.ts";
@@ -93,6 +95,7 @@ export type {
   GroupMember,
   SendOptions,
   SendResult,
+  LinkPreview,
   SendReactionPayload,
   QuoteOptions,
   MentionOptions,
@@ -101,5 +104,15 @@ export type {
   GroupPermissions,
   GroupLinkState,
   UpdateProfileOptions,
+  Contact,
+  ContactProfile,
+  ContactNickname,
+  UpdateContactOptions,
+  PollCreate,
+  PollVote,
+  PollTerminate,
+  CreatePollPayload,
+  VotePollPayload,
+  CreatePollResult,
   MaybePromise,
 } from "./types.ts";

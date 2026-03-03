@@ -169,8 +169,8 @@ export class Composer<C extends Context> implements MiddlewareObj<C> {
     return this.filter((ctx) => {
       const text = ctx.text;
       if (!text?.startsWith("/")) return false;
-      // "/cmd", "/cmd arg", "/cmd@botname arg"
-      const match = /^\/([a-z0-9_]+)(@\S+)?(?:\s(.*))?$/i.exec(text);
+      // "/cmd", "/cmd arg", "/cmd@botname arg" (arg may span multiple lines)
+      const match = /^\/([a-z0-9_]+)(@\S+)?(?:\s([\s\S]*))?$/i.exec(text);
       if (!match) return false;
       const cmd = (match[1] ?? "").toLowerCase();
       if (!normalized.includes(cmd)) return false;

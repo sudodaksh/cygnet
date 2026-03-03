@@ -9,8 +9,10 @@ import { SignalAPI } from "./core/api.ts";
 import { BotError, CygnetError } from "./core/error.ts";
 import { createLogger } from "./core/logger.ts";
 import { PollingListener } from "./core/polling.ts";
+import { WebhookListener } from "./core/webhook.ts";
 import { WebSocketListener } from "./core/websocket.ts";
 import type { UpdateSource } from "./core/source.ts";
+import type { WebhookListenerOptions } from "./core/webhook.ts";
 import type { Logger, LogLevel } from "./core/logger.ts";
 import type { RawUpdate, MaybePromise } from "./types.ts";
 import type { GroupStateSnapshot } from "./context.ts";
@@ -30,12 +32,19 @@ export interface BotConfig {
    * Transport for receiving updates.
    * - "websocket" (default): persistent WebSocket connection, works with all signal-cli modes
    * - "polling": REST polling via GET /v1/receive, works with normal/native modes only
+   * - "webhook": HTTP server that receives POSTs from signal-cli-rest-api's
+   *   `RECEIVE_WEBHOOK_URL` mechanism (json-rpc mode only)
    */
-  transport?: "websocket" | "polling";
+  transport?: "websocket" | "polling" | "webhook";
   /**
    * Polling interval in ms (default: 1000). Only used with transport: "polling".
    */
   pollingInterval?: number;
+  /**
+   * Webhook server options. Only used with transport: "webhook".
+   * Set `RECEIVE_WEBHOOK_URL` on signal-cli-rest-api to point to this server.
+   */
+  webhook?: Omit<WebhookListenerOptions, "logger">;
   /** Optional storage adapter for persisting group state across restarts. */
   groupStateStorage?: DirectStorageAdapter<GroupStateSnapshot>;
   /** Storage key for group state. Defaults to the bot phone number. */
@@ -156,6 +165,13 @@ export class Bot<C extends Context = Context> extends Composer<C> {
         logger: this.logger,
       });
       this.logger.info(`Bot started as ${this.#me} (polling)`);
+    } else if (transport === "webhook") {
+      const wh = new WebhookListener({
+        ...this.config.webhook,
+        logger: this.logger,
+      });
+      this.#listener = wh;
+      this.logger.info(`Bot started as ${this.#me} (webhook on ${wh.port}${wh.path})`);
     } else {
       const wsUrl = this.api.httpClient.wsReceiveUrl();
       this.#listener = new WebSocketListener(wsUrl, {

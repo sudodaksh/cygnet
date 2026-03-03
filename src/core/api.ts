@@ -1,12 +1,17 @@
 import { HttpClient, type ClientConfig } from "./client.ts";
 import type {
+  Contact,
   CreateGroupOptions,
+  CreatePollPayload,
+  CreatePollResult,
   Group,
   SendOptions,
   SendReactionPayload,
   SendResult,
+  UpdateContactOptions,
   UpdateGroupOptions,
   UpdateProfileOptions,
+  VotePollPayload,
 } from "../types.ts";
 
 export class SignalAPI {
@@ -65,6 +70,15 @@ export class SignalAPI {
     }
     if (options.editTimestamp !== undefined) {
       payload.edit_timestamp = options.editTimestamp;
+    }
+    if (options.linkPreview) {
+      const lp: Record<string, string> = {
+        url: options.linkPreview.url,
+        title: options.linkPreview.title,
+      };
+      if (options.linkPreview.description !== undefined) lp.description = options.linkPreview.description;
+      if (options.linkPreview.base64Thumbnail !== undefined) lp.base64_thumbnail = options.linkPreview.base64Thumbnail;
+      payload.link_preview = lp;
     }
 
     const raw = await this.#client.post<Record<string, unknown>>("/v2/send", payload);
@@ -227,6 +241,94 @@ export class SignalAPI {
       payload,
     );
   }
+
+  // --- Contacts ---
+
+  #contactPath(uuid?: string): string {
+    const base = `/v1/contacts/${encodeURIComponent(this.#client.phoneNumber)}`;
+    return uuid ? `${base}/${encodeURIComponent(uuid)}` : base;
+  }
+
+  /**
+   * List all contacts.
+   * @param allRecipients - If true, include all known recipients, not only saved contacts.
+   */
+  async listContacts(allRecipients = false): Promise<Contact[]> {
+    const query = allRecipients ? "?all_recipients=true" : "";
+    return this.#client.get<Contact[]>(`${this.#contactPath()}${query}`);
+  }
+
+  /** Get a specific contact by UUID. */
+  async getContact(uuid: string): Promise<Contact> {
+    return this.#client.get<Contact>(this.#contactPath(uuid));
+  }
+
+  /** Update a contact's name or disappearing message timer. */
+  async updateContact(options: UpdateContactOptions): Promise<void> {
+    const payload: Record<string, unknown> = {
+      recipient: options.recipient,
+    };
+    if (options.name !== undefined) payload.name = options.name;
+    if (options.expirationInSeconds !== undefined) payload.expiration_in_seconds = options.expirationInSeconds;
+    await this.#client.put(this.#contactPath(), payload);
+  }
+
+  /** Download a contact's profile avatar. Returns raw bytes. */
+  async getContactAvatar(uuid: string): Promise<Uint8Array> {
+    return this.#client.getBytes(`${this.#contactPath(uuid)}/avatar`);
+  }
+
+  // --- Polls ---
+
+  #pollPath(suffix?: string): string {
+    const base = `/v1/polls/${encodeURIComponent(this.#client.phoneNumber)}`;
+    return suffix ? `${base}/${suffix}` : base;
+  }
+
+  /**
+   * Create a new poll in a chat.
+   * Returns the timestamp of the poll creation message.
+   */
+  async createPoll(
+    recipient: string,
+    poll: CreatePollPayload,
+  ): Promise<CreatePollResult> {
+    const payload: Record<string, unknown> = {
+      recipient,
+      question: poll.question,
+      answers: poll.answers,
+    };
+    if (poll.allowMultipleSelections !== undefined) {
+      payload.allow_multiple_selections = poll.allowMultipleSelections;
+    }
+    const raw = await this.#client.post<{ timestamp: string }>(this.#pollPath(), payload);
+    return { timestamp: Number(raw.timestamp) };
+  }
+
+  /**
+   * Vote in an existing poll.
+   * `selectedAnswers` uses 1-based indices (first answer = 1).
+   */
+  async voteInPoll(recipient: string, vote: VotePollPayload): Promise<void> {
+    const payload: Record<string, unknown> = {
+      recipient,
+      poll_author: vote.pollAuthor,
+      poll_timestamp: String(vote.pollTimestamp),
+      selected_answers: vote.selectedAnswers,
+    };
+    await this.#client.post(this.#pollPath("vote"), payload);
+  }
+
+  /** Close/terminate a poll so no more votes can be cast. */
+  async closePoll(recipient: string, pollTimestamp: number): Promise<void> {
+    const payload: Record<string, unknown> = {
+      recipient,
+      poll_timestamp: String(pollTimestamp),
+    };
+    await this.#client.delete(this.#pollPath(), payload);
+  }
+
+  // --- Attachments ---
 
   /** Download a received attachment by ID. Returns raw bytes. */
   async downloadAttachment(id: string): Promise<Uint8Array> {
