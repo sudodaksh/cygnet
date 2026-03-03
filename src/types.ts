@@ -33,6 +33,9 @@ export interface DataMessage {
   reaction?: Reaction; // present = this DataMessage IS a reaction
   sticker?: Sticker;
   remoteDelete?: { timestamp: number }; // present = this is a remote delete for the message with this timestamp
+  pollCreate?: PollCreate;
+  pollVote?: PollVote;
+  pollTerminate?: PollTerminate;
   expiresInSeconds: number;
   viewOnce: boolean;
   isExpirationUpdate?: boolean;
@@ -194,6 +197,22 @@ export interface SendOptions {
   viewOnce?: boolean;
   /** Timestamp of a previously sent message to edit */
   editTimestamp?: number;
+  /**
+   * Attach a link preview to the message.
+   * The `url` must start with `https://` and must appear in the message text.
+   */
+  linkPreview?: LinkPreview;
+}
+
+export interface LinkPreview {
+  /** URL to preview. Must start with "https://" and appear in the message text. */
+  url: string;
+  /** Title shown in the preview card. Required. */
+  title: string;
+  /** Optional description shown below the title. */
+  description?: string;
+  /** Optional base64-encoded thumbnail image (data URI or raw base64). */
+  base64Thumbnail?: string;
 }
 
 export interface QuoteOptions {
@@ -266,6 +285,102 @@ export interface UpdateProfileOptions {
   name: string;
   base64Avatar?: string;
   about?: string;
+}
+
+// --- Contact types ---
+
+export interface ContactProfile {
+  givenName: string;
+  familyName: string;
+  about: string;
+  hasAvatar: boolean;
+  lastUpdatedTimestamp: number;
+}
+
+export interface ContactNickname {
+  name: string;
+  givenName: string;
+  familyName: string;
+}
+
+export interface Contact {
+  number: string;
+  uuid: string;
+  /** Contact name (set by the bot/user, not the profile name). */
+  name: string;
+  /** The contact's Signal profile name. */
+  profileName: string;
+  username: string;
+  color: string;
+  blocked: boolean;
+  messageExpiration: string;
+  note: string;
+  profile: ContactProfile;
+  givenName: string;
+  nickname: ContactNickname;
+}
+
+export interface UpdateContactOptions {
+  /** The recipient's phone number, UUID, or username. */
+  recipient: string;
+  /** Contact display name. */
+  name?: string;
+  /** Disappearing message timer in seconds. */
+  expirationInSeconds?: number;
+}
+
+// --- Poll types (incoming) ---
+
+/** Received when someone creates a poll. Carried on DataMessage. */
+export interface PollCreate {
+  question: string;
+  allowMultiple: boolean;
+  options: string[];
+}
+
+/**
+ * Received when someone votes in a poll. Carried on DataMessage.
+ * The voter is `envelope.source*`; the poll creator is `author*`.
+ * `optionIndexes` are 0-based indices into the original `PollCreate.options`.
+ */
+export interface PollVote {
+  /** @deprecated Use authorNumber or authorUuid instead. */
+  author: string;
+  authorNumber: string | null;
+  authorUuid: string;
+  /** Timestamp of the original poll creation message. */
+  targetSentTimestamp: number;
+  /** 0-based indices of the selected options. */
+  optionIndexes: number[];
+  voteCount: number;
+}
+
+/** Received when a poll is closed/terminated. Carried on DataMessage. */
+export interface PollTerminate {
+  /** Timestamp of the original poll creation message. */
+  targetSentTimestamp: number;
+}
+
+// --- Poll types (outgoing / API payloads) ---
+
+export interface CreatePollPayload {
+  question: string;
+  answers: string[];
+  /** Allow voters to select multiple options. Default: true. */
+  allowMultipleSelections?: boolean;
+}
+
+export interface VotePollPayload {
+  /** The poll creator's phone number or UUID. */
+  pollAuthor: string;
+  /** Timestamp of the poll creation message. */
+  pollTimestamp: number;
+  /** 1-based indices of the selected answers (the REST API uses 1-based). */
+  selectedAnswers: number[];
+}
+
+export interface CreatePollResult {
+  timestamp: number;
 }
 
 // Utility

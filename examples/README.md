@@ -15,10 +15,14 @@ Available examples:
 
 - `examples/hello-world.ts`: minimal bot setup and plain text replies
 - `examples/commands.ts`: command parsing with `ctx.match`
+- `examples/contacts.ts`: list, look up, and update Signal contacts
 - `examples/reactions.ts`: react to messages, handle incoming reactions
 - `examples/quotes-and-replies.ts`: quote messages, handle incoming quotes
 - `examples/typing-and-receipts.ts`: typing indicators, delivery/read receipts
 - `examples/edit-and-delete.ts`: edit and delete sent messages, handle edits/deletes
 - `examples/group-updates.ts`: `group_update` handling with persisted group state
 - `examples/audio-files.ts`: attachment filtering for audio content
+- `examples/polls.ts`: create, vote, close, and tally Signal polls
+- `examples/styled-text.ts`: styled text formatting (bold, italic, strikethrough, spoiler, monospace)
+- `examples/webhook.ts`: webhook transport (signal-cli-rest-api pushes updates to the bot)
 - `examples/wizard-register.ts`: session-backed registration wizard

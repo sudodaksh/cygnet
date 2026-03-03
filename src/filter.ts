@@ -6,6 +6,9 @@ import type {
   EditMessage,
   Envelope,
   GroupInfo,
+  PollCreate,
+  PollTerminate,
+  PollVote,
   Reaction,
   ReceiptMessage,
   SyncMessage,
@@ -24,6 +27,9 @@ export type FilterQuery =
   | "message:group"   // DataMessage from a group (excludes group updates)
   | "message:private" // DataMessage from a 1-on-1 (no group)
   | "message:sticker" // DataMessage with a sticker
+  | "message:poll_create"  // DataMessage with a new poll
+  | "message:poll_vote"    // DataMessage with a poll vote
+  | "message:poll_close"   // DataMessage with a poll termination
   | "group_update"    // Group metadata/membership change (join, leave, rename, etc.)
   | "edit_message"    // EditMessage
   | "delete_message"  // DeleteMessage
@@ -63,6 +69,12 @@ export function matchFilter(ctx: Context, query: FilterQuery): boolean {
       return env.dataMessage != null && env.dataMessage.groupInfo?.type === "UPDATE";
     case "message:sticker":
       return env.dataMessage != null && !env.dataMessage.reaction && !env.dataMessage.remoteDelete && env.dataMessage.sticker != null;
+    case "message:poll_create":
+      return env.dataMessage != null && env.dataMessage.pollCreate != null;
+    case "message:poll_vote":
+      return env.dataMessage != null && env.dataMessage.pollVote != null;
+    case "message:poll_close":
+      return env.dataMessage != null && env.dataMessage.pollTerminate != null;
     case "edit_message":
       return env.editMessage != null;
     case "delete_message":
@@ -144,6 +156,28 @@ export type Filter<C extends Context, Q extends FilterQuery> =
         update: { envelope: Envelope & { dataMessage: DataMessage & { reaction: undefined; sticker: NonNullable<DataMessage["sticker"]> } } };
         dataMessage: DataMessage;
         message: DataMessage;
+        msgTimestamp: number;
+      }
+  : Q extends "message:poll_create"
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { pollCreate: PollCreate } } };
+        dataMessage: DataMessage;
+        pollCreate: PollCreate;
+        message: DataMessage;
+        msgTimestamp: number;
+      }
+  : Q extends "message:poll_vote"
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { pollVote: PollVote } } };
+        dataMessage: DataMessage;
+        pollVote: PollVote;
+        msgTimestamp: number;
+      }
+  : Q extends "message:poll_close"
+    ? C & {
+        update: { envelope: Envelope & { dataMessage: DataMessage & { pollTerminate: PollTerminate } } };
+        dataMessage: DataMessage;
+        pollTerminate: PollTerminate;
         msgTimestamp: number;
       }
   : Q extends "group_update"

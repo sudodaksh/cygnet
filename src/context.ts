@@ -4,17 +4,23 @@ import type { Logger } from "./core/logger.ts";
 import type {
   Attachment,
   CallMessage,
+  CreatePollPayload,
+  CreatePollResult,
   DataMessage,
   DeleteMessage,
   EditMessage,
   Group,
   MaybePromise,
+  PollCreate,
+  PollTerminate,
+  PollVote,
   RawUpdate,
   Reaction,
   ReceiptMessage,
   SendOptions,
   SyncMessage,
   TypingMessage,
+  VotePollPayload,
 } from "./types.ts";
 import { matchFilter } from "./filter.ts";
 import type { FilterQuery, Filter } from "./filter.ts";
@@ -191,7 +197,7 @@ export class Context {
    */
   get message(): DataMessage | undefined {
     const dm = this.update.envelope.dataMessage;
-    return dm && !dm.reaction && !dm.remoteDelete && dm.groupInfo?.type !== "UPDATE" ? dm : undefined;
+    return dm && !dm.reaction && !dm.remoteDelete && !dm.pollVote && !dm.pollTerminate && dm.groupInfo?.type !== "UPDATE" ? dm : undefined;
   }
 
   /**
@@ -209,6 +215,21 @@ export class Context {
    */
   get remoteDeleteTimestamp(): number | undefined {
     return this.update.envelope.dataMessage?.remoteDelete?.timestamp;
+  }
+
+  /** The PollCreate payload if this DataMessage is a poll creation. */
+  get pollCreate(): PollCreate | undefined {
+    return this.update.envelope.dataMessage?.pollCreate ?? undefined;
+  }
+
+  /** The PollVote payload if this DataMessage is a poll vote. */
+  get pollVote(): PollVote | undefined {
+    return this.update.envelope.dataMessage?.pollVote ?? undefined;
+  }
+
+  /** The PollTerminate payload if this DataMessage is a poll close. */
+  get pollTerminate(): PollTerminate | undefined {
+    return this.update.envelope.dataMessage?.pollTerminate ?? undefined;
   }
 
   /**
@@ -413,6 +434,40 @@ export class Context {
   /** Leave the current group. */
   async leaveGroup(): Promise<void> {
     return this.api.leaveGroup(this.#assertGroup());
+  }
+
+  // --- Poll convenience methods ---
+
+  /**
+   * Create a poll in the current chat.
+   * Returns the timestamp of the poll creation message.
+   */
+  async createPoll(
+    question: string,
+    answers: string[],
+    options?: { allowMultipleSelections?: boolean },
+  ): Promise<CreatePollResult> {
+    return this.api.createPoll(this.chat, {
+      question,
+      answers,
+      allowMultipleSelections: options?.allowMultipleSelections,
+    });
+  }
+
+  /**
+   * Vote in a poll in the current chat.
+   * `selectedAnswers` uses 1-based indices (first answer = 1).
+   */
+  async voteInPoll(vote: VotePollPayload): Promise<void> {
+    return this.api.voteInPoll(this.chat, vote);
+  }
+
+  /**
+   * Close/terminate a poll in the current chat.
+   * Only the poll creator can close a poll.
+   */
+  async closePoll(pollTimestamp: number): Promise<void> {
+    return this.api.closePoll(this.chat, pollTimestamp);
   }
 
   // --- Type guard methods ---
