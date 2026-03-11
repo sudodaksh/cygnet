@@ -24,6 +24,14 @@ export interface BotConfig {
   /** The bot's registered phone number, e.g. "+491234567890" */
   phoneNumber: string;
   /**
+   * Whether to pass the bot's own outgoing/sync updates through middleware.
+   * Default: false.
+   *
+   * This aligns cygnet with grammY/Telegram, where bot listeners only receive
+   * incoming user updates by default and do not react to the bot's own sends.
+   */
+  includeOwnMessages?: boolean;
+  /**
    * Custom Context subclass to use. Supports context flavoring.
    * Defaults to the base Context class.
    */
@@ -61,6 +69,18 @@ export interface BotConfig {
    * When provided, `logLevel` is ignored (filtering is your logger's job).
    */
   logger?: Logger;
+}
+
+function isOwnUpdate(update: RawUpdate, me: string): boolean {
+  const env = update.envelope;
+
+  // signal-cli-rest-api echoes the bot's own outgoing messages back via sync
+  // updates, and in some setups also as regular envelopes where the sender is
+  // the bot's registered number.
+  if (env.syncMessage != null) return true;
+  if (env.sourceNumber === me) return true;
+  if (env.source === me) return true; // older payloads may put the number here
+  return false;
 }
 
 export class Bot<C extends Context = Context> extends Composer<C> {
@@ -200,6 +220,10 @@ export class Bot<C extends Context = Context> extends Composer<C> {
    * Can be used directly for custom transport (e.g. webhooks).
    */
   async handleUpdate(update: RawUpdate): Promise<void> {
+    if (!(this.config.includeOwnMessages ?? false) && isOwnUpdate(update, this.#me)) {
+      return;
+    }
+
     const ContextClass = this.config.ContextConstructor ?? Context;
     const ctx = new ContextClass(update, this.api, this.#me) as C;
     (ctx as Context)._logger = this.logger;

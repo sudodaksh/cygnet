@@ -103,6 +103,7 @@ import { Bot, FileStorage } from "cygnet";
 const bot = new Bot({
   signalService: "localhost:8080", // signal-cli-rest-api URL (scheme optional)
   phoneNumber: "+491234567890",    // the bot's registered number
+  includeOwnMessages: false,        // optional, default false
   groupStateStorage: new FileStorage(".cygnet-group-state.json"), // optional
   logLevel: "info",     // optional: "debug" | "info" | "warn" | "error" | "silent"
   transport: "websocket", // optional: "websocket" (default) | "polling" | "webhook"
@@ -113,6 +114,8 @@ bot.stop();  // graceful shutdown
 ```
 
 `bot.start()` calls `GET /v1/health` on startup and then opens a WebSocket to `ws://{signalService}/v1/receive/{phoneNumber}`. Updates are processed sequentially.
+
+By default, cygnet does **not** pass the bot's own outgoing/sync updates through middleware. This aligns with grammY / Telegram-style bot behavior and avoids self-reply loops. Set `includeOwnMessages: true` if you explicitly want those updates.
 
 See [Webhook transport](#webhook-transport) for the `"webhook"` option.
 
@@ -823,7 +826,7 @@ See [`examples/webhook.ts`](./examples/webhook.ts) for a complete setup.
 
 | Member | Description |
 |---|---|
-| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.logLevel`, `config.logger`, `config.ContextConstructor`, `config.transport` (`"websocket"` \| `"polling"` \| `"webhook"`), `config.pollingInterval`, `config.webhook` (`{ port?, host?, path? }`), `config.groupStateStorage`, `config.groupStateKey` |
+| `new Bot(config)` | `config.signalService`, `config.phoneNumber`, optional `config.includeOwnMessages` (default `false`), `config.logLevel`, `config.logger`, `config.ContextConstructor`, `config.transport` (`"websocket"` \| `"polling"` \| `"webhook"`), `config.pollingInterval`, `config.webhook` (`{ port?, host?, path? }`), `config.groupStateStorage`, `config.groupStateKey` |
 | `bot.start()` | Start WebSocket polling. Resolves only after `bot.stop()` is called. |
 | `bot.stop()` | Gracefully stop the bot. |
 | `bot.handleUpdate(update)` | Process a single `RawUpdate` manually (useful for custom transports). |
