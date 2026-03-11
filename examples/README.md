@@ -26,3 +26,4 @@ Available examples:
 - `examples/styled-text.ts`: styled text formatting (bold, italic, strikethrough, spoiler, monospace)
 - `examples/webhook.ts`: webhook transport (signal-cli-rest-api pushes updates to the bot)
 - `examples/wizard-register.ts`: session-backed registration wizard
+- `examples/trivia-quiz.ts`: interactive trivia game using WizardScene with score tracking, reactions, and high scores
